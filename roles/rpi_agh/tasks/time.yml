@@ -2,6 +2,9 @@
 # rtc-ds3231.service is installed and enabled in phase 1 (base.yml) and first
 # runs at the phase 1 reboot. It registers the DS3231 on the bus (new_device),
 # so it must be active before i2cdetect can show UU and hwclock can read it.
+# A DS3231 that lost its time (oscillator stop flag: new module, flat battery)
+# cannot be read until it is written, so the reads below tolerate that and the
+# RTC is then written from the NTP synchronised system clock.
 - name: Time | rtc-ds3231.service is running
   ansible.builtin.systemd_service:
     name: rtc-ds3231.service
@@ -33,11 +36,12 @@
   ansible.builtin.command: hwclock -r --verbose
   register: __rpi_agh_hwclock_before
   changed_when: false
+  failed_when: false
   check_mode: false
 
 - name: Time | show the hardware clock
   ansible.builtin.debug:
-    var: __rpi_agh_hwclock_before.stdout_lines
+    msg: "{{ __rpi_agh_hwclock_before.stdout_lines + __rpi_agh_hwclock_before.stderr_lines }}"
 
 - name: Time | read NTP / RTC settings
   ansible.builtin.command: timedatectl show -p NTP -p LocalRTC
@@ -64,10 +68,12 @@
   changed_when: false
   check_mode: false
 
+# Prints the absolute drift in seconds, or "unreadable" when the RTC has no valid time
 - name: Time | measure RTC drift
   ansible.builtin.shell: |
     set -euo pipefail
-    rtc=$(date -d "$(hwclock --get)" +%s)
+    if ! rtc_time=$(hwclock --get); then echo unreadable; exit 0; fi
+    rtc=$(date -d "$rtc_time" +%s)
     now=$(date +%s)
     d=$(( now - rtc )); echo "${d#-}"
   args:
@@ -78,7 +84,9 @@
 
 - name: Time | write the system time to the RTC (hwclock -w)
   ansible.builtin.command: hwclock -w --verbose
-  when: __rpi_agh_rtc_drift.stdout | int > rpi_agh_rtc_max_drift_seconds
+  when: >-
+    __rpi_agh_rtc_drift.stdout == 'unreadable'
+    or __rpi_agh_rtc_drift.stdout | int > rpi_agh_rtc_max_drift_seconds
   changed_when: true
 
 - name: Time | read timedatectl status

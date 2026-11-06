@@ -10,10 +10,13 @@ Type=oneshot
 RemainAfterExit=yes
 # Instantiate the device; the '-' prefix means don't fail if already registered
 ExecStartPre=-/usr/bin/bash -c 'echo ds3231 {{ rpi_agh_rtc_i2c_address }} > /sys/bus/i2c/devices/i2c-{{ rpi_agh_rtc_i2c_bus }}/new_device'
-# Give the rtc-ds1307 driver a moment to probe
-ExecStartPre=/usr/bin/sleep 0.3
-# Set system clock from RTC
-ExecStart=/usr/sbin/hwclock --hctosys --utc
+# Wait up to 1s for the rtc-ds1307 driver to bind; fail when it does not (no I2C
+# bus yet, nothing at the address), which is what phase 1's reboot check relies on
+ExecStartPre=/usr/bin/bash -c 'for _ in 1 2 3 4 5 6 7 8 9 10; do test -d {{ __rpi_agh_rtc_sysfs }}/rtc && exit 0; sleep 0.1; done; echo "DS3231 not bound at {{ __rpi_agh_rtc_sysfs }}" >&2; exit 1'
+# Set system clock from RTC. A DS3231 whose oscillator stopped (new module, flat
+# battery) has no valid time and the read fails with EINVAL ("SET TIME!" in the
+# kernel log): keep the unit up, phase 2 writes the RTC once NTP is synchronised.
+ExecStart=-/usr/sbin/hwclock --hctosys --utc
 # On shutdown, write system time back to RTC so the next boot is accurate
 ExecStop=/usr/sbin/hwclock --systohc --utc
 
