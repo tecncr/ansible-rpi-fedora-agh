@@ -172,17 +172,34 @@
     quiet: true
   no_log: true
 
-- name: Validate | warn when AdGuardHome.yaml does not point at the deployed certificate
+# AdGuard Home serves the AGH FQDN (rpi_agh_adguard_fqdn), never the host FQDN,
+# which is only for Cockpit/administration. A mismatch silently breaks
+# DoH/DoT/DoQ (AdGuard Home only logs an error), so it is fatal. Inline certificate_chain / private_key in the YAML is accepted
+# instead of a path; TLS disabled skips the check.
+- name: Validate | AdGuardHome.yaml uses the AGH FQDN certificate, key and server name
   vars:
-    __tls: "{{ (rpi_agh_adguard_config | from_yaml).tls | default({}) }}"
-  ansible.builtin.debug:
-    msg: >-
-      WARNING: AdGuardHome.yaml tls section expects certificate_path={{ __tls.certificate_path | default('(unset)') }}
-      and private_key_path={{ __tls.private_key_path | default('(unset)') }}, but the role deploys
-      /opt/adguardhome/certs/{{ rpi_agh_adguard_fqdn }}.pem and /opt/adguardhome/certs/{{ rpi_agh_adguard_fqdn }}.key
-  when: >-
-    __tls.certificate_path | default('') != '/opt/adguardhome/certs/' ~ rpi_agh_adguard_fqdn ~ '.pem'
-    or __tls.private_key_path | default('') != '/opt/adguardhome/certs/' ~ rpi_agh_adguard_fqdn ~ '.key'
+    __tls: "{{ (rpi_agh_adguard_config | from_yaml).tls | default({}, true) }}"
+    __cert_path: /opt/adguardhome/certs/{{ rpi_agh_adguard_fqdn }}.pem
+    __key_path: /opt/adguardhome/certs/{{ rpi_agh_adguard_fqdn }}.key
+    __cert_ok: >-
+      {{ __tls.certificate_path | default('', true) == __cert_path
+         or (__tls.certificate_path | default('', true) == '' and __tls.certificate_chain | default('', true) != '') }}
+    __key_ok: >-
+      {{ __tls.private_key_path | default('', true) == __key_path
+         or (__tls.private_key_path | default('', true) == '' and __tls.private_key | default('', true) != '') }}
+    __name_ok: "{{ __tls.server_name | default('', true) in ['', rpi_agh_adguard_fqdn] }}"
+  ansible.builtin.assert:
+    that:
+      - not (__tls.enabled | default(false) | bool) or (__cert_ok | bool and __key_ok | bool and __name_ok | bool)
+    fail_msg: >-
+      AdGuardHome.yaml must use the AdGuard Home FQDN {{ rpi_agh_adguard_fqdn }} (not the host FQDN
+      {{ rpi_agh_fqdn }}, which is only for Cockpit): expected tls.server_name={{ rpi_agh_adguard_fqdn }},
+      tls.certificate_path={{ __cert_path }}, tls.private_key_path={{ __key_path }}; found
+      server_name={{ __tls.server_name | default('(unset)', true) }},
+      certificate_path={{ __tls.certificate_path | default('(unset)', true) }},
+      private_key_path={{ __tls.private_key_path | default('(unset)', true) }}.
+      Fix it with ansible-vault edit on the inventory's AdGuardHome.yaml.
+    quiet: true
 
 # ------------------------------------------------------------------ target
 - name: Validate | target is Fedora on aarch64

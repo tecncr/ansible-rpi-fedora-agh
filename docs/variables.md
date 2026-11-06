@@ -23,7 +23,7 @@ The run stops before changing anything if any of these is undefined
 | `rpi_agh_host_tls_key` | str (PEM) | parses, matches the certificate | `files/<host>/host.key` (vault) |
 | `rpi_agh_adguard_tls_cert` | str (PEM) | valid, not expired, SAN covers `rpi_agh_adguard_fqdn` | `files/<host>/adguard.pem` |
 | `rpi_agh_adguard_tls_key` | str (PEM) | parses, matches the certificate | `files/<host>/adguard.key` (vault) |
-| `rpi_agh_adguard_config` | str (YAML) | parses as a YAML mapping; warns if the TLS paths do not match the deployed files | `files/<host>/AdGuardHome.yaml` (vault) |
+| `rpi_agh_adguard_config` | str (YAML) | parses as a YAML mapping; with `tls.enabled`, `server_name` must be `rpi_agh_adguard_fqdn` and `certificate_path`/`private_key_path` must be `/opt/adguardhome/certs/<rpi_agh_adguard_fqdn>.pem`/`.key` (or the PEM inline). The host FQDN is only for Cockpit | `files/<host>/AdGuardHome.yaml` (vault) |
 
 Connection variables needed by `site.yml` (set in the example `group_vars`):
 

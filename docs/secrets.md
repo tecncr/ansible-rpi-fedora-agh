@@ -114,7 +114,10 @@ Where they end up on the Pi:
 
 Inside the container these are `/opt/adguardhome/certs/<adguard_fqdn>.pem|.key`.
 Point `tls.certificate_path` and `tls.private_key_path` in `AdGuardHome.yaml`
-at them. The role warns when they differ.
+at them, and set `tls.server_name` to the AGH FQDN. AdGuard Home always uses
+the AGH FQDN; the host FQDN and its certificate are only for Cockpit and
+administration. Validation fails on any mismatch, because AdGuard Home would
+start without TLS and only log an error.
 
 ### Renewal
 
