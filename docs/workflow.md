@@ -9,8 +9,12 @@ cp -r inventory.example inventory
 
 `inventory/` is git-ignored. Keep it somewhere safe (it holds your encrypted
 secrets), e.g. a private repository or a backed-up directory symlinked here.
-To use an inventory stored elsewhere, pass `INVENTORY=/path` to `make` or
-`-i /path` to `ansible-playbook`.
+To use an inventory stored elsewhere, pass `INVENTORY_DIR=/path` to `make`
+or `-i /path/hosts.yml` to `ansible-playbook`. Always point `-i` at
+`hosts.yml`, not at the directory. With a directory, Ansible tries to parse
+every file under it as inventory, including the certificates, keys and
+`AdGuardHome.yaml` in `files/`. `ansible.cfg` also ignores `files/` when a
+directory is passed, as a safety net.
 
 Fill in the inventory as described in [variables.md](variables.md) and
 [secrets.md](secrets.md), then run `make encrypt`.

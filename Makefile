@@ -12,7 +12,8 @@
 VENV        ?= .venv
 PYTHON      ?= python3
 BIN         := $(VENV)/bin
-INVENTORY   ?= inventory
+INVENTORY_DIR ?= inventory
+INVENTORY   ?= $(INVENTORY_DIR)/hosts.yml
 LIMIT       ?=
 TAGS        ?=
 EXTRA       ?=
@@ -27,8 +28,8 @@ endif
 PLAY_ARGS := -i $(INVENTORY) $(VAULT_ARGS) \
 	$(if $(LIMIT),--limit $(LIMIT)) $(if $(TAGS),--tags $(TAGS)) $(EXTRA)
 
-SECRET_FILES = $(wildcard $(INVENTORY)/group_vars/*/vault.yml $(INVENTORY)/host_vars/*/vault.yml \
-	$(INVENTORY)/files/*/*.key $(INVENTORY)/files/*/AdGuardHome.yaml)
+SECRET_FILES = $(wildcard $(INVENTORY_DIR)/group_vars/*/vault.yml $(INVENTORY_DIR)/host_vars/*/vault.yml \
+	$(INVENTORY_DIR)/files/*/*.key $(INVENTORY_DIR)/files/*/AdGuardHome.yaml)
 
 .PHONY: help setup venv collections lint syntax encrypt check-encrypted \
 	bootstrap site diff forget-hostkey clean distclean
@@ -50,11 +51,12 @@ collections: venv requirements.yml
 	$(BIN)/ansible-galaxy collection install -r requirements.yml -p collections
 
 syntax: setup
-	$(BIN)/ansible-playbook -i inventory.example site.yml --syntax-check
-	$(BIN)/ansible-playbook -i inventory.example bootstrap.yml --syntax-check
+	$(BIN)/ansible-playbook -i inventory.example/hosts.yml site.yml --syntax-check
+	$(BIN)/ansible-playbook -i inventory.example/hosts.yml bootstrap.yml --syntax-check
 
+# Lint against the example inventory; never creates or touches inventory/
 lint: setup syntax
-	$(BIN)/ansible-lint
+	ANSIBLE_INVENTORY=inventory.example/hosts.yml $(BIN)/ansible-lint
 
 # Encrypt every secret file that is not encrypted yet
 encrypt: venv
