@@ -78,6 +78,9 @@ argument_specs:
       rpi_agh_packages:
         type: list
         elements: str
+      rpi_agh_dnf_conf:
+        type: dict
+        description: Options written to the [main] section of /etc/dnf/dnf.conf (whole file replaced).
       rpi_agh_unprivileged_port_start:
         type: int
       rpi_agh_zram_size:

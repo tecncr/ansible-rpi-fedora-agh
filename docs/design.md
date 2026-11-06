@@ -8,6 +8,7 @@ deliberately differs from the original procedure.
 | Manual step | Role implementation |
 |---|---|
 | "Ask for FQDN / AGH FQDN / admin user / keys / certs / YAML" | Inventory variables, validated up front. Nothing is interactive |
+| Write `/etc/dnf/dnf.conf` | `template` with the complete file, before the upgrade so it already applies |
 | `dnf update -y --refresh` (twice) | `dnf5: name='*' state=latest update_cache=true`, once, before the reboot |
 | `dnf install ...` (spread across the procedure) | One install in phase 1, while systemd-resolved still works |
 | `hostnamectl set-hostname --static` | `hostname: use=systemd` |

@@ -46,6 +46,7 @@ Connection variables needed by `site.yml` (set in the example `group_vars`):
 | Variable | Default | Notes |
 |---|---|---|
 | `rpi_agh_packages` | see defaults | installed in phase 1, before systemd-resolved is masked |
+| `rpi_agh_dnf_conf` | `fastestmirror=True`, `gpgcheck=True`, `installonly_limit=2`, `clean_requirements_on_remove=True` | `/etc/dnf/dnf.conf` is replaced with exactly these `[main]` options, before the upgrade |
 | `rpi_agh_unprivileged_port_start` | `23` | `/etc/sysctl.d/50-unprivileged-port-start.conf` |
 | `rpi_agh_zram_size` | `ram` | `/etc/systemd/zram-generator.conf` |
 | `rpi_agh_zram_compression_algorithm` | `zstd` | |

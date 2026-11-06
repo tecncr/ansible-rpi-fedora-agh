@@ -1,0 +1,5 @@
+{{ ansible_managed | comment }}
+[main]
+{% for key, value in rpi_agh_dnf_conf.items() %}
+{{ key }}={{ value }}
+{% endfor %}

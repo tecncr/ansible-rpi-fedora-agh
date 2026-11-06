@@ -37,7 +37,7 @@ The connection user must be `rpi_agh_admin_user` with working sudo.
 | File | Tags | Purpose |
 |---|---|---|
 | `validate.yml` | `always` | input and target validation (read-only) |
-| `packages.yml` | `phase1`, `packages` | system upgrade and package installation |
+| `packages.yml` | `phase1`, `packages` | `dnf.conf`, system upgrade and package installation |
 | `base.yml` | `phase1`, `base` | hostname, sysctl, zram, firmware config |
 | `network.yml` | `phase1`, `network` | rename/move the ethernet profile |
 | `boot_cleanup.yml` | `phase1`, `boot` | foreign machine-ID cleanup in `/boot` |
@@ -69,6 +69,7 @@ Details: [docs/design.md](../../docs/design.md#custom-modules).
 
 | Path | Source |
 |---|---|
+| `/etc/dnf/dnf.conf` | `templates/dnf.conf.j2` |
 | `/etc/sysctl.d/50-unprivileged-port-start.conf` | `base.yml` |
 | `/etc/systemd/zram-generator.conf` | `templates/zram-generator.conf.j2` |
 | `/boot/efi/config.txt` (lines added) | `base.yml` |

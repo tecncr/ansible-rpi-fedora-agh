@@ -24,7 +24,7 @@ procedure with something you can re-run as often as you like:
 | Phase | Step | Tag |
 |---|---|---|
 | — | Validate all inputs on the controller, then check the target is a Raspberry Pi running Fedora aarch64 | `always` |
-| 1 | `dnf upgrade --refresh`, install every needed package | `packages` |
+| 1 | `/etc/dnf/dnf.conf` (fastestmirror, gpgcheck, `installonly_limit=2`, clean_requirements_on_remove), `dnf upgrade --refresh`, install every needed package | `packages` |
 | 1 | Static hostname, `ip_unprivileged_port_start=23`, zram (`ram`, zstd), I2C + DS3231 overlay in `/boot/efi/config.txt` | `base` |
 | 1 | Rename the ethernet NetworkManager profile to `Ethernet` and store it as `Ethernet.nmconnection` (all other settings unchanged) | `network` |
 | 1 | Remove BLS entries, rescue images and initramfs files that belong to a different machine ID | `boot` |

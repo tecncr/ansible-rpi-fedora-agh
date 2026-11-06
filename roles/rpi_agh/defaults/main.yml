@@ -45,6 +45,13 @@ rpi_agh_packages:
   - openssl
   - firewalld
 
+# /etc/dnf/dnf.conf is replaced with exactly these [main] options
+rpi_agh_dnf_conf:
+  fastestmirror: "True"
+  gpgcheck: "True"
+  installonly_limit: 2
+  clean_requirements_on_remove: "True"
+
 rpi_agh_unprivileged_port_start: 23
 
 rpi_agh_zram_size: ram
