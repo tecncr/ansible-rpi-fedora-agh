@@ -36,13 +36,19 @@
     __expected: >-
       {{ (__rpi_agh_sshd_settings | dict2items
           | map(attribute='key') | map('lower')
-          | zip(__rpi_agh_sshd_settings.values())
+          | zip(__rpi_agh_sshd_settings.values() | map('lower'))
           | map('join', ' ') | list) + ['authenticationmethods publickey'] }}
+    # OpenSSH < 10 prints keywords lowercase (logingracetime 0), 10.x keeps
+    # their capitalisation (LoginGraceTime 0): compare case-insensitively.
+    __actual: >-
+      {{ __rpi_agh_sshd_effective.stdout_lines | map('lower')
+         | map('regex_replace', '\s+', ' ') | map('trim') | list }}
+    __missing: "{{ __expected | difference(__actual) }}"
   ansible.builtin.assert:
     that:
-      - __expected | difference(__rpi_agh_sshd_effective.stdout_lines) | length == 0
+      - __missing | length == 0
     fail_msg: >-
-      sshd effective settings differ from the expected ones:
-      {{ __expected | difference(__rpi_agh_sshd_effective.stdout_lines) }}.
+      sshd effective settings differ from the expected ones: missing {{ __missing }},
+      sshd -T has {{ __actual | select('match', '^(' ~ (__missing | map('split') | map('first') | join('|')) ~ ') ') | list }}.
       Check /etc/ssh/sshd_config.d/*.conf for overriding values.
     quiet: true
