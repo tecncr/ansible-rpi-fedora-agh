@@ -32,6 +32,7 @@ rpi_agh_packages:
   - fastfetch
   - zram-generator
   - dnf5-plugin-automatic
+  - dnf5-plugins                 # dnf needs-restarting (reboot detection)
   - i2c-tools
   - python3-i2c-tools
   - pcp

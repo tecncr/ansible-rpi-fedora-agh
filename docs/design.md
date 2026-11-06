@@ -16,7 +16,7 @@ deliberately differs from the original procedure.
 | Rename / move the NetworkManager profile | Custom module `nm_connection_relocate` (see below) |
 | `cat > /etc/systemd/zram-generator.conf` | `template` |
 | `cat >> /boot/efi/config.txt` | `lineinfile` per line (appending twice would duplicate the lines) |
-| `systemctl reboot`, "separate script after reboot" | `reboot` module mid-play, only when needed. One playbook covers both phases |
+| `systemctl reboot`, "separate script after reboot" | `reboot` module mid-play, only when needed (see "Reboot detection"). One playbook covers both phases |
 | `/etc/dnf/automatic.conf` + timer | `template` + `systemd_service` |
 | `i2cdetect -y 1` "check for UU at 0x68" | Parsed and asserted. Fails with the full table if it isn't `UU` |
 | `hwclock -r`, `timedatectl` | Read-only tasks, printed with `debug` |
@@ -130,6 +130,25 @@ procedure. The `ssh` and `cockpit` services that Fedora Server enables by
 default are left alone, so the firewall change cannot cut off the Ansible
 connection.
 
+### Reboot detection
+
+Handlers only know what changed in the current run. If a run upgrades the
+kernel or edits `config.txt` and then fails before rebooting, the re-run sees
+those tasks as "ok" and a handler-only design would never reboot. So
+`tasks/reboot.yml` also reads the running system's state and reboots when any
+of these is true:
+
+| Check | Means |
+|---|---|
+| A phase 1 task notified `Reboot required` in this run | upgrade, zram config or `config.txt` changed |
+| `dnf needs-restarting` exits 1 (cache-only, from `dnf5-plugins`) | core packages (kernel, glibc, systemd, ...) were updated since boot |
+| `/sys/bus/i2c/devices/<bus>-00<addr>` is missing | the `i2c-rtc` overlay is not loaded. This checks the overlay, not the chip: the kernel creates the I2C client from the device tree even if the chip doesn't answer |
+| `/sys/block/zram0/comp_algorithm` doesn't mark `[zstd]` | zram not set up from the current config |
+
+After a reboot, the overlay and zram checks run again and **fail** if still
+unmet. A broken `config.txt` or zram config is reported once, instead of the
+Pi rebooting on every run.
+
 ### IPv6 auto DNS
 
 `rpi_agh_ignore_ipv6_auto_dns: true` (the default) also sets
@@ -182,4 +201,5 @@ kept byte for byte.
   than accumulated.
 - Services are restarted through handlers or conditional `restarted` states,
   only when their inputs changed.
-- The reboot only happens when a phase 1 task reported a change that needs it.
+- The reboot only happens when this run changed something that needs it, or
+  the system state shows a reboot is still pending.

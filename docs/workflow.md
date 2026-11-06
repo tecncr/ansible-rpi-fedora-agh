@@ -72,9 +72,13 @@ The play connects as the admin user and uses sudo with
    at this point.
 2. **Phase 1.** Upgrade, packages, hostname, sysctl, zram, `config.txt`, the
    NetworkManager profile, `/boot` cleanup.
-3. **Reboot**, but only if phase 1 changed something that needs one (new
-   packages, zram, `config.txt`). Ansible waits for the Pi to come back
-   (`rpi_agh_reboot_timeout`, 900 s by default).
+3. **Reboot**, but only when one is needed: phase 1 changed packages, zram
+   or `config.txt` in this run, **or** the system still shows a pending
+   reboot (`dnf needs-restarting`, RTC overlay not loaded, zram not using the
+   configured algorithm). The second check covers an earlier run that failed
+   before it could reboot. The play prints the reasons, waits for the Pi to
+   come back (`rpi_agh_reboot_timeout`, 900 s by default), and then confirms
+   that the overlay and zram are active.
 4. **Phase 2.** Everything else, ending with the DNS health check and the
    switch to 127.0.0.1.
 
@@ -152,6 +156,8 @@ check mode never creates.
 | `missing required arguments: ...` | A required variable is not defined: see [variables.md](variables.md) |
 | `... is required and must be a non-empty string` | The variable is defined but empty |
 | `certificate is not usable` | Expired, wrong SAN, or the key does not belong to the certificate. The message says which |
+| `Reboot \| RTC overlay is loaded now` fails | The Pi rebooted but `/sys/bus/i2c/devices/1-0068` is missing: check the `dtoverlay=` line in `/boot/efi/config.txt` |
+| `Reboot \| zram uses the configured algorithm now` fails | Check `/etc/systemd/zram-generator.conf` and `systemctl status systemd-zram-setup@zram0` |
 | `Expected UU at 0x68 on i2c-1` | RTC not wired, overlay not loaded (no reboot yet?), or a different address: check `i2cdetect -y 1` |
 | `expected exactly one ethernet device` | Set `rpi_agh_ethernet_interface` (e.g. `end0`) |
 | `another profile ... already uses id 'Ethernet'` | A second profile is already called `Ethernet`. Delete or rename it with `nmcli` |

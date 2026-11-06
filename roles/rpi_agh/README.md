@@ -41,7 +41,7 @@ The connection user must be `rpi_agh_admin_user` with working sudo.
 | `base.yml` | `phase1`, `base` | hostname, sysctl, zram, firmware config |
 | `network.yml` | `phase1`, `network` | rename/move the ethernet profile |
 | `boot_cleanup.yml` | `phase1`, `boot` | foreign machine-ID cleanup in `/boot` |
-| `reboot.yml` | `phase1`, `reboot` | flush handlers, reboot when required |
+| `reboot.yml` | `phase1`, `reboot` | flush handlers, detect pending reboots (changes, `dnf needs-restarting`, overlay, zram), reboot and re-check |
 | `updates.yml` | `phase2`, `updates` | dnf5 automatic |
 | `time.yml` | `phase2`, `time` | DS3231 check, RTC unit, NTP, RTC sync |
 | `tls.yml` | `phase2`, `tls` | host certificate, Cockpit |
