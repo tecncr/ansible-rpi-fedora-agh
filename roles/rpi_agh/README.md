@@ -38,12 +38,12 @@ The connection user must be `rpi_agh_admin_user` with working sudo.
 |---|---|---|
 | `validate.yml` | `always` | input and target validation (read-only) |
 | `packages.yml` | `phase1`, `packages` | `dnf.conf`, system upgrade and package installation |
-| `base.yml` | `phase1`, `base` | hostname, sysctl, zram, firmware config |
+| `base.yml` | `phase1`, `base` | hostname, sysctl, zram, `rtc-ds3231.service` (installed + enabled), firmware config |
 | `network.yml` | `phase1`, `network` | rename/move the ethernet profile |
 | `boot_cleanup.yml` | `phase1`, `boot` | foreign machine-ID cleanup in `/boot` |
-| `reboot.yml` | `phase1`, `reboot` | flush handlers, detect pending reboots (changes, `dnf needs-restarting`, overlay, zram), reboot and re-check |
+| `reboot.yml` | `phase1`, `reboot` | flush handlers, detect pending reboots (changes, `dnf needs-restarting`, `rtc-ds3231.service` not active, zram), reboot and re-check |
 | `updates.yml` | `phase2`, `updates` | dnf5 automatic |
-| `time.yml` | `phase2`, `time` | DS3231 check, RTC unit, NTP, RTC sync |
+| `time.yml` | `phase2`, `time` | RTC unit running, DS3231 `UU` check, NTP, RTC sync |
 | `tls.yml` | `phase2`, `tls` | host certificate, Cockpit |
 | `pcp.yml` | `phase2`, `pcp` | pmlogger |
 | `users.yml` | `phase2`, `users` | admin/services users, SELinux label, sub-IDs, passwords, SSH keys |

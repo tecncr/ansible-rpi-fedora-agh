@@ -1,4 +1,13 @@
 ---
+# rtc-ds3231.service is installed and enabled in phase 1 (base.yml) and first
+# runs at the phase 1 reboot. It registers the DS3231 on the bus (new_device),
+# so it must be active before i2cdetect can show UU and hwclock can read it.
+- name: Time | rtc-ds3231.service is running
+  ansible.builtin.systemd_service:
+    name: rtc-ds3231.service
+    enabled: true
+    state: started
+
 - name: Time | probe the I2C bus (i2cdetect -y {{ rpi_agh_rtc_i2c_bus }})
   ansible.builtin.command: i2cdetect -y {{ rpi_agh_rtc_i2c_bus }}
   register: __rpi_agh_i2cdetect
@@ -16,7 +25,7 @@
       - __cell == 'UU'
     fail_msg: |
       Expected UU at {{ rpi_agh_rtc_i2c_address }} on i2c-{{ rpi_agh_rtc_i2c_bus }}, got '{{ __cell }}'.
-      Is the DS3231 connected and did the dtoverlay load (was the Pi rebooted)?
+      Is the DS3231 connected? Check `systemctl status rtc-ds3231.service`.
       {{ __rpi_agh_i2cdetect.stdout }}
     success_msg: "DS3231 found at {{ rpi_agh_rtc_i2c_address }} (UU)"
 
@@ -29,22 +38,6 @@
 - name: Time | show the hardware clock
   ansible.builtin.debug:
     var: __rpi_agh_hwclock_before.stdout_lines
-
-- name: Time | install rtc-ds3231.service
-  ansible.builtin.template:
-    src: rtc-ds3231.service.j2
-    dest: /etc/systemd/system/rtc-ds3231.service
-    owner: root
-    group: root
-    mode: "0644"
-  register: __rpi_agh_rtc_unit
-
-- name: Time | enable and start rtc-ds3231.service
-  ansible.builtin.systemd_service:
-    name: rtc-ds3231.service
-    enabled: true
-    state: started
-    daemon_reload: "{{ __rpi_agh_rtc_unit is changed }}"
 
 - name: Time | read NTP / RTC settings
   ansible.builtin.command: timedatectl show -p NTP -p LocalRTC

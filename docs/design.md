@@ -19,9 +19,9 @@ deliberately differs from the original procedure.
 | `cat >> /boot/efi/config.txt` | `lineinfile` per line (appending twice would duplicate the lines) |
 | `systemctl reboot`, "separate script after reboot" | `reboot` module mid-play, only when needed (see "Reboot detection"). One playbook covers both phases |
 | `/etc/dnf/automatic.conf` + timer | `template` + `systemd_service` |
-| `i2cdetect -y 1` "check for UU at 0x68" | Parsed and asserted. Fails with the full table if it isn't `UU` |
+| `i2cdetect -y 1` "check for UU at 0x68" | Parsed and asserted, **after** `rtc-ds3231.service` has registered the device. Fails with the full table if it isn't `UU` |
 | `hwclock -r`, `timedatectl` | Read-only tasks, printed with `debug` |
-| `rtc-ds3231.service` | `template`, verbatim content, daemon-reload only when it changed |
+| `rtc-ds3231.service` | Phase 1: `template` (verbatim content) + enabled, not started: the I2C bus only exists after the reboot, which then starts it. Phase 2 makes sure it is running |
 | `timedatectl set-ntp true` / `set-local-rtc 0` | Run only if `timedatectl show` says otherwise |
 | `hwclock -w` | Only after `NTPSynchronized=yes`, and only when RTC and system time differ by more than 2 s |
 | `nano` the certificates/key, check them | Controller-side validation + `copy` with modes (see [secrets.md](secrets.md)) |
@@ -143,10 +143,10 @@ of these is true:
 |---|---|
 | A phase 1 task notified `Reboot required` in this run | upgrade, zram config or `config.txt` changed |
 | `dnf needs-restarting` exits 1 (cache-only, from `dnf5-plugins`) | core packages (kernel, glibc, systemd, ...) were updated since boot |
-| `/sys/bus/i2c/devices/<bus>-00<addr>` is missing | the `i2c-rtc` overlay is not loaded. This checks the overlay, not the chip: the kernel creates the I2C client from the device tree even if the chip doesn't answer |
+| `rtc-ds3231.service` is not active | the unit (installed in phase 1) hasn't run at a boot with the I2C bus from `config.txt` active. When it's active, it has registered the DS3231 and set the clock from it |
 | `/sys/block/zram0/comp_algorithm` doesn't mark `[zstd]` | zram not set up from the current config |
 
-After a reboot, the overlay and zram checks run again and **fail** if still
+After a reboot, the RTC unit and zram checks run again and **fail** if still
 unmet. A broken `config.txt` or zram config is reported once, instead of the
 Pi rebooting on every run.
 

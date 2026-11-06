@@ -25,12 +25,12 @@ procedure with something you can re-run as often as you like:
 |---|---|---|
 | — | Validate all inputs on the controller, then check the target is a Raspberry Pi running Fedora aarch64 | `always` |
 | 1 | `/etc/dnf/dnf.conf` (fastestmirror, gpgcheck, `installonly_limit=2`, clean_requirements_on_remove), `dnf upgrade --refresh`, install every needed package | `packages` |
-| 1 | Static hostname, `ip_unprivileged_port_start=23`, zram (`ram`, zstd), I2C + DS3231 overlay in `/boot/efi/config.txt` | `base` |
+| 1 | Static hostname, `ip_unprivileged_port_start=23`, zram (`ram`, zstd), `rtc-ds3231.service` (enabled, starts at the reboot), I2C + DS3231 overlay in `/boot/efi/config.txt` | `base` |
 | 1 | Rename the ethernet NetworkManager profile to `Ethernet` and store it as `Ethernet.nmconnection` (all other settings unchanged) | `network` |
 | 1 | Remove BLS entries, rescue images and initramfs files that belong to a different machine ID | `boot` |
 | 1 | **Reboot**, only when something above requires it | `reboot` |
 | 2 | dnf5 automatic updates (`apply_updates=True`, `reboot=when-needed`) | `updates` |
-| 2 | Check the DS3231 shows up as `UU` at 0x68, add `rtc-ds3231.service`, enable NTP, keep the RTC in UTC, write the RTC once NTP is synced | `time` |
+| 2 | Make sure `rtc-ds3231.service` is running, then check the DS3231 shows up as `UU` at 0x68, enable NTP, keep the RTC in UTC, write the RTC once NTP is synced | `time` |
 | 2 | Host TLS certificate and key, wired into Cockpit | `tls` |
 | 2 | PCP / pmlogger | `pcp` |
 | 2 | Admin user (UID/GID 1000), `services` user (UID/GID 2000, home `/services` with the SELinux home label), subuid/subgid, passwords for all three accounts, exclusive `authorized_keys` | `users` |

@@ -4,9 +4,10 @@
 #   b) the running system shows that a reboot is still pending, which also
 #      catches changes made by an earlier run that failed before rebooting:
 #        - dnf needs-restarting: updated core packages (kernel, glibc, systemd...)
-#        - the RTC overlay from config.txt is not loaded (no I2C client at the address)
+#        - rtc-ds3231.service (installed in base.yml) is not active: it can
+#          only start once the I2C bus from config.txt exists, i.e. after a boot
 #        - zram0 is missing or not using the configured compression algorithm
-# Phase 2 therefore always starts on the new kernel with zram and the overlay active.
+# Phase 2 therefore always starts on the new kernel, with zram and the RTC up.
 
 - name: Reboot | flush phase 1 handlers
   ansible.builtin.meta: flush_handlers
@@ -18,11 +19,10 @@
   failed_when: __rpi_agh_needs_restarting.rc not in [0, 1]
   check_mode: false
 
-- name: Reboot | check whether the RTC overlay is loaded
-  ansible.builtin.stat:
-    path: >-
-      /sys/bus/i2c/devices/{{ rpi_agh_rtc_i2c_bus }}-{{ '%04x' | format(rpi_agh_rtc_i2c_address | int(base=16)) }}
-  register: __rpi_agh_rtc_client
+- name: Reboot | check whether rtc-ds3231.service is active
+  ansible.builtin.systemd_service:
+    name: rtc-ds3231.service
+  register: __rpi_agh_rtc_active
 
 - name: Reboot | read the active zram compression algorithm
   ansible.builtin.slurp:
@@ -35,7 +35,8 @@
     __rpi_agh_reboot_reasons: >-
       {{ (['changes made in this run'] if rpi_agh_reboot_required | default(false) | bool else [])
          + (['updated packages (dnf needs-restarting)'] if __rpi_agh_needs_restarting.rc == 1 else [])
-         + (['RTC overlay not loaded'] if not __rpi_agh_rtc_client.stat.exists else [])
+         + (['rtc-ds3231.service not active']
+            if __rpi_agh_rtc_active.status.ActiveState | default('') != 'active' else [])
          + (['zram0 not using ' ~ rpi_agh_zram_compression_algorithm]
             if ('[' ~ rpi_agh_zram_compression_algorithm ~ ']')
                not in (__rpi_agh_zram_algorithm.content | default('') | b64decode)
@@ -57,17 +58,16 @@
   ansible.builtin.set_fact:
     rpi_agh_reboot_required: false
 
-# A missing RTC overlay or zram after a reboot is a configuration problem, not
+# An inactive RTC unit or missing zram after a reboot is a configuration problem, not
 # something another reboot fixes: fail here instead of rebooting on every run.
-- name: Reboot | re-check the overlay and zram after rebooting
+- name: Reboot | re-check the RTC unit and zram after rebooting
   when: __rpi_agh_reboot_reasons | length > 0
   block:
-    - name: Reboot | RTC overlay is loaded now
-      ansible.builtin.stat:
-        path: >-
-          /sys/bus/i2c/devices/{{ rpi_agh_rtc_i2c_bus }}-{{ '%04x' | format(rpi_agh_rtc_i2c_address | int(base=16)) }}
-      register: __rpi_agh_rtc_client_after
-      failed_when: not __rpi_agh_rtc_client_after.stat.exists
+    - name: Reboot | rtc-ds3231.service came up at boot
+      ansible.builtin.systemd_service:
+        name: rtc-ds3231.service
+      register: __rpi_agh_rtc_active_after
+      failed_when: __rpi_agh_rtc_active_after.status.ActiveState | default('') != 'active'
 
     - name: Reboot | zram uses the configured algorithm now
       ansible.builtin.slurp:
