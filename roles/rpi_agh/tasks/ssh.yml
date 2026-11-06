@@ -1,0 +1,48 @@
+---
+# authorized_keys were installed in users.yml, so key-only login is already
+# possible for root, the admin and the services user when sshd restarts.
+
+- name: SSH | require public key authentication only
+  ansible.builtin.lineinfile:
+    path: /etc/ssh/sshd_config
+    regexp: '^#?\s*AuthenticationMethods\s'
+    line: AuthenticationMethods publickey
+    insertafter: '^# Authentication:'
+    validate: /usr/sbin/sshd -t -f %s
+  notify: Restart sshd
+
+- name: SSH | harden sshd_config
+  ansible.builtin.lineinfile:
+    path: /etc/ssh/sshd_config
+    regexp: '^#?\s*{{ item.key }}\s'
+    line: "{{ item.key }} {{ item.value }}"
+    validate: /usr/sbin/sshd -t -f %s
+  loop: "{{ __rpi_agh_sshd_settings | dict2items }}"
+  notify: Restart sshd
+
+- name: SSH | restart sshd now
+  ansible.builtin.meta: flush_handlers
+
+- name: SSH | read the effective sshd configuration
+  ansible.builtin.command: /usr/sbin/sshd -T
+  register: __rpi_agh_sshd_effective
+  changed_when: false
+  check_mode: false
+
+# Files in /etc/ssh/sshd_config.d are read before sshd_config and the first
+# value wins, so a drop-in (e.g. from cloud-init) could silently override us.
+- name: SSH | effective configuration matches
+  vars:
+    __expected: >-
+      {{ (__rpi_agh_sshd_settings | dict2items
+          | map(attribute='key') | map('lower')
+          | zip(__rpi_agh_sshd_settings.values())
+          | map('join', ' ') | list) + ['authenticationmethods publickey'] }}
+  ansible.builtin.assert:
+    that:
+      - __expected | difference(__rpi_agh_sshd_effective.stdout_lines) | length == 0
+    fail_msg: >-
+      sshd effective settings differ from the expected ones:
+      {{ __expected | difference(__rpi_agh_sshd_effective.stdout_lines) }}.
+      Check /etc/ssh/sshd_config.d/*.conf for overriding values.
+    quiet: true

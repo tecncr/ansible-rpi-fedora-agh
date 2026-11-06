@@ -1,0 +1,14 @@
+---
+# EXAMPLE ONLY. Fill in real values, then encrypt the copy in ./inventory:
+#   ansible-vault encrypt inventory/group_vars/rpi_adguard/vault.yml
+#
+# Hashes:   mkpasswd --method=yescrypt     (package "mkpasswd" / "whois")
+#      or:  openssl passwd -6
+# The placeholders below are rejected by the role's validation on purpose.
+
+# Plaintext sudo password of the admin user; must match vault_admin_password_hash
+vault_admin_become_password: CHANGE_ME
+
+vault_root_password_hash: CHANGE_ME
+vault_admin_password_hash: CHANGE_ME
+vault_services_password_hash: CHANGE_ME

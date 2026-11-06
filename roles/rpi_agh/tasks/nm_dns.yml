@@ -1,0 +1,53 @@
+---
+# Point the ethernet profile at a single DNS server and reapply it in place.
+# Input:
+#   __rpi_agh_target_dns   DNS server to set
+#   __rpi_agh_accept_dns   list of current values that need no change
+
+- name: DNS | read DNS settings of {{ rpi_agh_ethernet_connection_id }}
+  ansible.builtin.command: >-
+    nmcli -g ipv4.dns,ipv4.ignore-auto-dns,ipv6.ignore-auto-dns
+    connection show {{ rpi_agh_ethernet_connection_id }}
+  register: __rpi_agh_nm_dns
+  changed_when: false
+  check_mode: false
+
+# nmcli prints the fields again for the active connection, so only the first
+# lines are used.
+- name: DNS | read the device of {{ rpi_agh_ethernet_connection_id }}
+  ansible.builtin.command: nmcli -g GENERAL.DEVICES connection show {{ rpi_agh_ethernet_connection_id }}
+  register: __rpi_agh_nm_dev
+  changed_when: false
+  check_mode: false
+  failed_when: __rpi_agh_nm_dev.rc != 0 or __rpi_agh_nm_dev.stdout_lines | length == 0 or __rpi_agh_nm_dev.stdout_lines[0] == ''
+
+- name: DNS | evaluate DNS settings
+  ansible.builtin.set_fact:
+    __rpi_agh_nm_dns_ok: >-
+      {{ __rpi_agh_nm_dns.stdout_lines[0] in __rpi_agh_accept_dns
+         and __rpi_agh_nm_dns.stdout_lines[1] == 'yes'
+         and (__rpi_agh_nm_dns.stdout_lines[2] == 'yes' or not rpi_agh_ignore_ipv6_auto_dns) }}
+    __rpi_agh_nm_device: "{{ __rpi_agh_nm_dev.stdout_lines[0] }}"
+
+- name: DNS | set the profile DNS server to {{ __rpi_agh_target_dns }}
+  ansible.builtin.command:
+    argv: >-
+      {{ ['nmcli', 'connection', 'modify', rpi_agh_ethernet_connection_id,
+          'ipv4.dns', __rpi_agh_target_dns, 'ipv4.ignore-auto-dns', 'yes']
+         + (['ipv6.ignore-auto-dns', 'yes'] if rpi_agh_ignore_ipv6_auto_dns else []) }}
+  when: not (__rpi_agh_nm_dns_ok | bool)
+  changed_when: true
+
+- name: DNS | reapply the profile without bouncing the link
+  ansible.builtin.command: nmcli device reapply {{ __rpi_agh_nm_device }}
+  when: not (__rpi_agh_nm_dns_ok | bool)
+  changed_when: true
+
+- name: DNS | wait for NetworkManager to write /etc/resolv.conf
+  ansible.builtin.command: grep -E '^nameserver[[:space:]]' /etc/resolv.conf
+  register: __rpi_agh_resolv
+  until: __rpi_agh_resolv.rc == 0
+  retries: 12
+  delay: 5
+  changed_when: false
+  check_mode: false

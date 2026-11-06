@@ -1,0 +1,168 @@
+---
+argument_specs:
+  main:
+    short_description: Set up a Fedora Server Raspberry Pi as an AdGuard Home DNS server
+    description:
+      - Phase 1 (base system, reboots when needed) and phase 2 (time, TLS, users,
+        podman, SSH hardening, AdGuard Home rootless Quadlet, DNS switch-over).
+      - Every option without a default is required. Additional emptiness and format
+        checks run in tasks/validate.yml.
+    options:
+      # ------------------------------------------------------------- required
+      rpi_agh_fqdn:
+        type: str
+        required: true
+        description: FQDN of the Pi (hostname.domain.tld).
+      rpi_agh_admin_user:
+        type: str
+        required: true
+        description: Main admin user, created with UID/GID rpi_agh_admin_uid/gid.
+      rpi_agh_root_password_hash:
+        type: str
+        required: true
+        no_log: true
+        description: crypt(3) password hash for root.
+      rpi_agh_admin_password_hash:
+        type: str
+        required: true
+        no_log: true
+        description: crypt(3) password hash for the admin user.
+      rpi_agh_services_password_hash:
+        type: str
+        required: true
+        no_log: true
+        description: crypt(3) password hash for the services user.
+      rpi_agh_root_authorized_keys:
+        type: list
+        elements: str
+        required: true
+        description: SSH public keys for root.
+      rpi_agh_admin_authorized_keys:
+        type: list
+        elements: str
+        required: true
+        description: SSH public keys for the admin user.
+      rpi_agh_services_authorized_keys:
+        type: list
+        elements: str
+        required: true
+        description: SSH public keys for the services user.
+      rpi_agh_host_tls_cert:
+        type: str
+        required: true
+        description: PEM certificate (optionally followed by its chain) for rpi_agh_fqdn.
+      rpi_agh_host_tls_key:
+        type: str
+        required: true
+        no_log: true
+        description: PEM private key matching rpi_agh_host_tls_cert.
+      rpi_agh_adguard_tls_cert:
+        type: str
+        required: true
+        description: PEM certificate (optionally followed by its chain) for rpi_agh_adguard_fqdn.
+      rpi_agh_adguard_tls_key:
+        type: str
+        required: true
+        no_log: true
+        description: PEM private key matching rpi_agh_adguard_tls_cert.
+      rpi_agh_adguard_config:
+        type: str
+        required: true
+        no_log: true
+        description: Full content of AdGuardHome.yaml.
+
+      # ------------------------------------------------------------- defaults
+      rpi_agh_adguard_fqdn:
+        type: str
+        description: FQDN AdGuard Home serves TLS for. Defaults to rpi_agh_fqdn.
+      rpi_agh_packages:
+        type: list
+        elements: str
+      rpi_agh_unprivileged_port_start:
+        type: int
+      rpi_agh_zram_size:
+        type: str
+      rpi_agh_zram_compression_algorithm:
+        type: str
+      rpi_agh_firmware_config:
+        type: path
+      rpi_agh_firmware_config_lines:
+        type: list
+        elements: str
+      rpi_agh_boot_cleanup:
+        type: bool
+      rpi_agh_reboot_timeout:
+        type: int
+      rpi_agh_ethernet_interface:
+        type: str
+      rpi_agh_ethernet_connection_id:
+        type: str
+      rpi_agh_bootstrap_nameserver:
+        type: str
+      rpi_agh_ignore_ipv6_auto_dns:
+        type: bool
+      rpi_agh_firewalld_services_removed:
+        type: list
+        elements: str
+      rpi_agh_firewalld_services_added:
+        type: list
+        elements: str
+      rpi_agh_dnf_automatic_timer:
+        type: str
+      rpi_agh_dnf_automatic_apply_updates:
+        type: bool
+      rpi_agh_dnf_automatic_reboot:
+        type: str
+        choices: [never, when-changed, when-needed]
+      rpi_agh_rtc_i2c_bus:
+        type: int
+      rpi_agh_rtc_i2c_address:
+        type: str
+      rpi_agh_rtc_max_drift_seconds:
+        type: int
+      rpi_agh_ntp_sync_timeout:
+        type: int
+      rpi_agh_admin_uid:
+        type: int
+      rpi_agh_admin_gid:
+        type: int
+      rpi_agh_admin_groups:
+        type: list
+        elements: str
+      rpi_agh_services_user:
+        type: str
+      rpi_agh_services_group:
+        type: str
+      rpi_agh_services_uid:
+        type: int
+      rpi_agh_services_gid:
+        type: int
+      rpi_agh_services_home:
+        type: path
+      rpi_agh_services_comment:
+        type: str
+      rpi_agh_admin_subid_start:
+        type: int
+      rpi_agh_services_subid_start:
+        type: int
+      rpi_agh_subid_count:
+        type: int
+      rpi_agh_adguard_image:
+        type: str
+      rpi_agh_adguard_container_name:
+        type: str
+      rpi_agh_adguard_timezone:
+        type: str
+      rpi_agh_adguard_dir:
+        type: path
+      rpi_agh_adguard_published_ports:
+        type: list
+        elements: str
+      rpi_agh_adguard_config_force:
+        type: bool
+      rpi_agh_dns_check_domain:
+        type: str
+      rpi_agh_dns_check_timeout:
+        type: int
+      rpi_agh_dns_check_interval:
+        type: int

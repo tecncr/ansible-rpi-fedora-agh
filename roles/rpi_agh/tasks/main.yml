@@ -1,0 +1,74 @@
+---
+# Entry point. Each file can be targeted with its tag, e.g. --tags adguardhome.
+# Validation always runs, so a run with missing or broken values never touches
+# the host.
+
+- name: Validate inputs and target
+  ansible.builtin.import_tasks: validate.yml
+  tags: [always]
+
+# ------------------------------------------------------------------ phase 1
+- name: Packages
+  ansible.builtin.import_tasks: packages.yml
+  tags: [phase1, packages]
+
+- name: Base system
+  ansible.builtin.import_tasks: base.yml
+  tags: [phase1, base]
+
+- name: Network profile
+  ansible.builtin.import_tasks: network.yml
+  tags: [phase1, network]
+
+- name: Boot partition cleanup
+  ansible.builtin.import_tasks: boot_cleanup.yml
+  tags: [phase1, boot]
+
+- name: Reboot when phase 1 requires it
+  ansible.builtin.import_tasks: reboot.yml
+  tags: [phase1, reboot]
+
+# ------------------------------------------------------------------ phase 2
+- name: Automatic updates
+  ansible.builtin.import_tasks: updates.yml
+  tags: [phase2, updates]
+
+- name: RTC and time
+  ansible.builtin.import_tasks: time.yml
+  tags: [phase2, time]
+
+- name: Host TLS and Cockpit
+  ansible.builtin.import_tasks: tls.yml
+  tags: [phase2, tls]
+
+- name: Performance Co-Pilot
+  ansible.builtin.import_tasks: pcp.yml
+  tags: [phase2, pcp]
+
+- name: Users
+  ansible.builtin.import_tasks: users.yml
+  tags: [phase2, users]
+
+- name: Podman
+  ansible.builtin.import_tasks: podman.yml
+  tags: [phase2, podman]
+
+- name: Resolver bootstrap
+  ansible.builtin.import_tasks: resolver.yml
+  tags: [phase2, dns]
+
+- name: SSH hardening
+  ansible.builtin.import_tasks: ssh.yml
+  tags: [phase2, ssh]
+
+- name: Firewall
+  ansible.builtin.import_tasks: firewall.yml
+  tags: [phase2, firewall]
+
+- name: AdGuard Home
+  ansible.builtin.import_tasks: adguardhome.yml
+  tags: [phase2, adguardhome]
+
+- name: Switch to local DNS
+  ansible.builtin.import_tasks: dns_switch.yml
+  tags: [phase2, dns]

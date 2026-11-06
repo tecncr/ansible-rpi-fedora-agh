@@ -1,0 +1,14 @@
+---
+- name: Updates | configure dnf5 automatic
+  ansible.builtin.template:
+    src: automatic.conf.j2
+    dest: /etc/dnf/automatic.conf
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: Updates | enable {{ rpi_agh_dnf_automatic_timer }}
+  ansible.builtin.systemd_service:
+    name: "{{ rpi_agh_dnf_automatic_timer }}"
+    enabled: true
+    state: started

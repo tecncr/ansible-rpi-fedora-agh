@@ -1,0 +1,33 @@
+---
+# Full setup of every Pi in the rpi_adguard group: phase 1 (base system,
+# reboot when needed) and phase 2 (services). Idempotent; safe to re-run.
+#
+#   ansible-playbook site.yml                     # all Pis, one at a time
+#   ansible-playbook site.yml --limit agh01       # a single Pi
+#   ansible-playbook site.yml --tags adguardhome  # only one part
+#
+# Connects as the admin user (UID 1000) with sudo. For a freshly flashed image
+# that only has root's SSH key, run bootstrap.yml first.
+
+- name: Fedora Raspberry Pi AdGuard Home
+  hosts: rpi_adguard
+  # These Pis are the network's DNS servers: by default handle one at a time
+  # so the rest of the fleet keeps answering while one upgrades and reboots.
+  serial: "{{ rpi_agh_serial | default(1) }}"
+  gather_facts: true
+
+  pre_tasks:
+    - name: Refuse to connect as root (root SSH login gets disabled)
+      ansible.builtin.assert:
+        that:
+          - ansible_user is defined
+          - ansible_user == rpi_agh_admin_user
+        fail_msg: >-
+          Connect as the admin user ({{ rpi_agh_admin_user | default('rpi_agh_admin_user is undefined') }}),
+          not as {{ ansible_user | default('the local user') }}. Set ansible_user in the inventory;
+          use bootstrap.yml when only root can log in.
+        quiet: true
+      tags: [always]
+
+  roles:
+    - role: rpi_agh

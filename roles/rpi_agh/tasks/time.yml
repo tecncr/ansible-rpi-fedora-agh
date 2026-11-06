@@ -1,0 +1,99 @@
+---
+- name: Time | probe the I2C bus (i2cdetect -y {{ rpi_agh_rtc_i2c_bus }})
+  ansible.builtin.command: i2cdetect -y {{ rpi_agh_rtc_i2c_bus }}
+  register: __rpi_agh_i2cdetect
+  changed_when: false
+  check_mode: false
+
+- name: Time | DS3231 is claimed by the kernel driver (UU) at {{ rpi_agh_rtc_i2c_address }}
+  vars:
+    __addr: "{{ rpi_agh_rtc_i2c_address | int(base=16) }}"
+    __row_label: "{{ '%02x:' | format((__addr | int) // 16 * 16) }}"
+    __row: "{{ __rpi_agh_i2cdetect.stdout_lines | select('match', '^' ~ __row_label) | first | default('') }}"
+    __cell: "{{ (__row.split()[1:] + [''] * 16)[(__addr | int) % 16] }}"
+  ansible.builtin.assert:
+    that:
+      - __cell == 'UU'
+    fail_msg: |
+      Expected UU at {{ rpi_agh_rtc_i2c_address }} on i2c-{{ rpi_agh_rtc_i2c_bus }}, got '{{ __cell }}'.
+      Is the DS3231 connected and did the dtoverlay load (was the Pi rebooted)?
+      {{ __rpi_agh_i2cdetect.stdout }}
+    success_msg: "DS3231 found at {{ rpi_agh_rtc_i2c_address }} (UU)"
+
+- name: Time | read the hardware clock
+  ansible.builtin.command: hwclock -r --verbose
+  register: __rpi_agh_hwclock_before
+  changed_when: false
+  check_mode: false
+
+- name: Time | show the hardware clock
+  ansible.builtin.debug:
+    var: __rpi_agh_hwclock_before.stdout_lines
+
+- name: Time | install rtc-ds3231.service
+  ansible.builtin.template:
+    src: rtc-ds3231.service.j2
+    dest: /etc/systemd/system/rtc-ds3231.service
+    owner: root
+    group: root
+    mode: "0644"
+  register: __rpi_agh_rtc_unit
+
+- name: Time | enable and start rtc-ds3231.service
+  ansible.builtin.systemd_service:
+    name: rtc-ds3231.service
+    enabled: true
+    state: started
+    daemon_reload: "{{ __rpi_agh_rtc_unit is changed }}"
+
+- name: Time | read NTP / RTC settings
+  ansible.builtin.command: timedatectl show -p NTP -p LocalRTC
+  register: __rpi_agh_timedate
+  changed_when: false
+  check_mode: false
+
+- name: Time | enable NTP (timedatectl set-ntp true)
+  ansible.builtin.command: timedatectl set-ntp true
+  when: "'NTP=yes' not in __rpi_agh_timedate.stdout_lines"
+  changed_when: true
+
+- name: Time | keep the RTC in UTC (timedatectl set-local-rtc 0)
+  ansible.builtin.command: timedatectl set-local-rtc 0
+  when: "'LocalRTC=no' not in __rpi_agh_timedate.stdout_lines"
+  changed_when: true
+
+- name: Time | wait for NTP synchronisation before trusting the system clock
+  ansible.builtin.command: timedatectl show -p NTPSynchronized --value
+  register: __rpi_agh_ntp_sync
+  until: __rpi_agh_ntp_sync.stdout == 'yes'
+  retries: "{{ (rpi_agh_ntp_sync_timeout | int / 5) | round(0, 'ceil') | int }}"
+  delay: 5
+  changed_when: false
+  check_mode: false
+
+- name: Time | measure RTC drift
+  ansible.builtin.shell: |
+    set -euo pipefail
+    rtc=$(date -d "$(hwclock --get)" +%s)
+    now=$(date +%s)
+    d=$(( now - rtc )); echo "${d#-}"
+  args:
+    executable: /bin/bash
+  register: __rpi_agh_rtc_drift
+  changed_when: false
+  check_mode: false
+
+- name: Time | write the system time to the RTC (hwclock -w)
+  ansible.builtin.command: hwclock -w --verbose
+  when: __rpi_agh_rtc_drift.stdout | int > rpi_agh_rtc_max_drift_seconds
+  changed_when: true
+
+- name: Time | read timedatectl status
+  ansible.builtin.command: timedatectl
+  register: __rpi_agh_timedatectl
+  changed_when: false
+  check_mode: false
+
+- name: Time | show timedatectl status
+  ansible.builtin.debug:
+    var: __rpi_agh_timedatectl.stdout_lines

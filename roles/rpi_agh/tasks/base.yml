@@ -1,0 +1,31 @@
+---
+- name: Base | set static hostname
+  ansible.builtin.hostname:
+    name: "{{ rpi_agh_fqdn }}"
+    use: systemd
+
+- name: Base | allow unprivileged binds from port {{ rpi_agh_unprivileged_port_start }}
+  ansible.builtin.copy:
+    dest: /etc/sysctl.d/50-unprivileged-port-start.conf
+    content: "net.ipv4.ip_unprivileged_port_start={{ rpi_agh_unprivileged_port_start }}\n"
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Apply sysctl
+
+- name: Base | configure zram
+  ansible.builtin.template:
+    src: zram-generator.conf.j2
+    dest: /etc/systemd/zram-generator.conf
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Reboot required
+
+- name: Base | enable I2C and the DS3231 RTC overlay in the firmware config
+  ansible.builtin.lineinfile:
+    path: "{{ rpi_agh_firmware_config }}"
+    line: "{{ item }}"
+    state: present
+  loop: "{{ rpi_agh_firmware_config_lines }}"
+  notify: Reboot required

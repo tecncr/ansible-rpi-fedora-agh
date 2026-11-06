@@ -1,0 +1,62 @@
+---
+# Certificates were validated on the controller (validate.yml): they are not
+# expired, carry the FQDN in their SANs and match their private keys.
+
+- name: TLS | install host certificate
+  ansible.builtin.copy:
+    dest: "{{ rpi_agh_host_cert_path }}"
+    content: "{{ rpi_agh_host_tls_cert | trim }}\n"
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Restart cockpit
+
+- name: TLS | install host private key
+  ansible.builtin.copy:
+    dest: "{{ rpi_agh_host_key_path }}"
+    content: "{{ rpi_agh_host_tls_key | trim }}\n"
+    owner: root
+    group: root
+    mode: "0400"
+  no_log: true
+  notify: Restart cockpit
+
+- name: TLS | link certificate and key into cockpit
+  ansible.builtin.file:
+    src: "{{ item.src }}"
+    dest: /etc/cockpit/ws-certs.d/0-{{ rpi_agh_hostname }}.{{ item.ext }}
+    state: link
+    force: true
+  loop:
+    - { src: "{{ rpi_agh_host_key_path }}", ext: key }
+    - { src: "{{ rpi_agh_host_cert_path }}", ext: cert }
+  notify: Restart cockpit
+
+# Cockpit uses the alphabetically last certificate in ws-certs.d, so a
+# generated 0-self-signed.cert would win over 0-<hostname>.cert.
+- name: TLS | remove cockpit's self-signed certificate
+  ansible.builtin.file:
+    path: /etc/cockpit/ws-certs.d/{{ item }}
+    state: absent
+  loop:
+    - 0-self-signed.cert
+    - 0-self-signed.key
+  notify: Restart cockpit
+
+- name: TLS | enable cockpit.socket
+  ansible.builtin.systemd_service:
+    name: cockpit.socket
+    enabled: true
+    state: started
+
+- name: TLS | apply cockpit changes now
+  ansible.builtin.meta: flush_handlers
+
+- name: TLS | check which certificate cockpit uses
+  ansible.builtin.command: /usr/libexec/cockpit-certificate-ensure --check
+  register: __rpi_agh_cockpit_cert
+  changed_when: false
+  failed_when: >-
+    __rpi_agh_cockpit_cert.rc != 0
+    or ('0-' ~ rpi_agh_hostname ~ '.cert') not in (__rpi_agh_cockpit_cert.stdout ~ __rpi_agh_cockpit_cert.stderr)
+  check_mode: false

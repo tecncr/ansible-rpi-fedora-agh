@@ -1,0 +1,37 @@
+---
+- name: DNS switch | wait for AdGuard Home to answer (dig @127.0.0.1 {{ rpi_agh_dns_check_domain }})
+  ansible.builtin.command: >-
+    dig @127.0.0.1 {{ rpi_agh_dns_check_domain }} A +time=3 +tries=1
+  register: __rpi_agh_dig
+  until: "__rpi_agh_dig.rc == 0 and 'status: NOERROR' in __rpi_agh_dig.stdout"
+  retries: "{{ (rpi_agh_dns_check_timeout | int / rpi_agh_dns_check_interval | int) | round(0, 'ceil') | int }}"
+  delay: "{{ rpi_agh_dns_check_interval }}"
+  changed_when: false
+  check_mode: false
+
+- name: DNS switch | point the ethernet profile at 127.0.0.1
+  ansible.builtin.include_tasks: nm_dns.yml
+  vars:
+    __rpi_agh_target_dns: 127.0.0.1
+    __rpi_agh_accept_dns:
+      - 127.0.0.1
+
+- name: DNS switch | /etc/resolv.conf only lists 127.0.0.1
+  ansible.builtin.command: grep -E '^nameserver[[:space:]]' /etc/resolv.conf
+  register: __rpi_agh_nameservers
+  changed_when: false
+  failed_when: __rpi_agh_nameservers.stdout_lines | map('split') | map('last') | list != ['127.0.0.1']
+  check_mode: false
+
+- name: DNS switch | resolve through the system resolver
+  ansible.builtin.command: getent ahosts {{ rpi_agh_dns_check_domain }}
+  changed_when: false
+  check_mode: false
+
+- name: DNS switch | done
+  ansible.builtin.debug:
+    msg:
+      - "{{ rpi_agh_fqdn }} is set up."
+      - "AdGuard Home ({{ rpi_agh_adguard_fqdn }}) answers on 127.0.0.1 and the host resolves through it."
+      - "Cockpit: https://{{ rpi_agh_fqdn }}:9090"
+      - "SSH is public-key only; root login is disabled. Connect as {{ rpi_agh_admin_user }}."

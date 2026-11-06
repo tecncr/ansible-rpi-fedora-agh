@@ -1,0 +1,10 @@
+---
+- name: Network | rename the ethernet profile and move its keyfile to {{ rpi_agh_ethernet_connection_id ~ ".nmconnection" }}
+  nm_connection_relocate:
+    interface: "{{ rpi_agh_ethernet_interface }}"
+    id: "{{ rpi_agh_ethernet_connection_id }}"
+  register: __rpi_agh_nm
+
+- name: Network | remember the ethernet interface
+  ansible.builtin.set_fact:
+    rpi_agh_ethernet_device: "{{ __rpi_agh_nm.interface }}"

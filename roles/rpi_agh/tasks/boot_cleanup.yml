@@ -1,0 +1,20 @@
+---
+# Runs after the system upgrade so that a freshly installed kernel already has
+# a BLS entry for the current machine ID. The module refuses to remove anything
+# unless at least one entry for the current machine ID exists.
+
+- name: Boot | remove BLS entries, rescue and initramfs images of foreign machine IDs
+  bls_cleanup:
+    boot_dir: /boot
+  register: __rpi_agh_bls
+  when: rpi_agh_boot_cleanup | bool
+
+- name: Boot | report cleanup
+  ansible.builtin.debug:
+    msg:
+      machine_id: "{{ __rpi_agh_bls.machine_id }}"
+      kept: "{{ __rpi_agh_bls.kept_entries }}"
+      removed: "{{ __rpi_agh_bls.removed }}"
+  when:
+    - rpi_agh_boot_cleanup | bool
+    - __rpi_agh_bls is changed

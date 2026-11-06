@@ -1,0 +1,6 @@
+---
+- name: PCP | enable pmlogger
+  ansible.builtin.systemd_service:
+    name: pmlogger.service
+    enabled: true
+    state: started

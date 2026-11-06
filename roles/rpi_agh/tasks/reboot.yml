@@ -1,0 +1,17 @@
+---
+# Phase 1 handlers (sysctl, "Reboot required") run here, so phase 2 always
+# starts on a system running the new kernel, zram and the RTC overlay.
+
+- name: Reboot | flush phase 1 handlers
+  ansible.builtin.meta: flush_handlers
+
+- name: Reboot | reboot the Pi
+  ansible.builtin.reboot:
+    msg: Rebooting after base setup (rpi_agh phase 1)
+    reboot_timeout: "{{ rpi_agh_reboot_timeout }}"
+    post_reboot_delay: 10
+  when: rpi_agh_reboot_required | default(false) | bool
+
+- name: Reboot | clear reboot flag
+  ansible.builtin.set_fact:
+    rpi_agh_reboot_required: false

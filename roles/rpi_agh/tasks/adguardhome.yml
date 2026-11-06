@@ -1,0 +1,123 @@
+---
+# Everything in this file runs as the rootless services user.
+
+- name: AdGuard Home | rootless deployment as {{ rpi_agh_services_user }}
+  become: true
+  become_user: "{{ rpi_agh_services_user }}"
+  environment:
+    XDG_RUNTIME_DIR: "{{ rpi_agh_services_runtime_dir }}"
+  block:
+    - name: AdGuard Home | data directories
+      ansible.builtin.file:
+        path: "{{ rpi_agh_adguard_dir }}/{{ item }}"
+        state: directory
+        mode: "0750"
+      loop: [certs, work, conf]
+
+    - name: AdGuard Home | TLS certificate
+      ansible.builtin.copy:
+        dest: "{{ rpi_agh_adguard_dir }}/certs/{{ rpi_agh_adguard_fqdn }}.pem"
+        content: "{{ rpi_agh_adguard_tls_cert | trim }}\n"
+        mode: "0644"
+      register: __rpi_agh_cert
+
+    - name: AdGuard Home | TLS private key
+      ansible.builtin.copy:
+        dest: "{{ rpi_agh_adguard_dir }}/certs/{{ rpi_agh_adguard_fqdn }}.key"
+        content: "{{ rpi_agh_adguard_tls_key | trim }}\n"
+        mode: "0400"
+      no_log: true
+      register: __rpi_agh_key
+
+    - name: AdGuard Home | AdGuardHome.yaml (seeded only, unless rpi_agh_adguard_config_force)
+      ansible.builtin.copy:
+        dest: "{{ rpi_agh_adguard_dir }}/conf/AdGuardHome.yaml"
+        content: "{{ rpi_agh_adguard_config }}"
+        mode: "0600"
+        force: "{{ rpi_agh_adguard_config_force | bool }}"
+      no_log: true
+      register: __rpi_agh_config
+
+    - name: AdGuard Home | check for the image
+      ansible.builtin.command: podman image exists {{ rpi_agh_adguard_image }}
+      register: __rpi_agh_image
+      changed_when: false
+      failed_when: __rpi_agh_image.rc not in [0, 1]
+      check_mode: false
+
+    - name: AdGuard Home | pull {{ rpi_agh_adguard_image }}
+      ansible.builtin.command: podman pull {{ rpi_agh_adguard_image }}
+      when: __rpi_agh_image.rc == 1
+      changed_when: true
+      register: __rpi_agh_pull
+      retries: 5
+      delay: 10
+      until: __rpi_agh_pull.rc == 0
+
+    - name: AdGuard Home | Quadlet and systemd user unit directories
+      ansible.builtin.file:
+        path: "{{ rpi_agh_services_home }}/{{ item }}"
+        state: directory
+        mode: "0755"
+      loop:
+        - .config/containers/systemd
+        - .config/systemd/user/podman-auto-update.service.d
+
+    - name: AdGuard Home | Quadlet unit
+      ansible.builtin.template:
+        src: adguardhome.container.j2
+        dest: "{{ rpi_agh_services_home }}/.config/containers/systemd/{{ rpi_agh_adguard_container_name }}.container"
+        mode: "0644"
+      register: __rpi_agh_quadlet
+
+    - name: AdGuard Home | image prune unit
+      ansible.builtin.template:
+        src: podman-image-prune.service.j2
+        dest: "{{ rpi_agh_services_home }}/.config/systemd/user/podman-image-prune.service"
+        mode: "0644"
+      register: __rpi_agh_prune_unit
+
+    - name: AdGuard Home | prune images after every successful auto-update
+      ansible.builtin.copy:
+        dest: "{{ rpi_agh_services_home }}/.config/systemd/user/podman-auto-update.service.d/50-image-prune.conf"
+        content: |
+          # Managed by Ansible (rpi_agh)
+          [Unit]
+          OnSuccess=podman-image-prune.service
+        mode: "0644"
+      register: __rpi_agh_prune_dropin
+
+    - name: AdGuard Home | validate the Quadlet unit
+      ansible.builtin.command: /usr/libexec/podman/quadlet -dryrun -user
+      register: __rpi_agh_quadlet_dryrun
+      changed_when: false
+      failed_when: >-
+        __rpi_agh_quadlet_dryrun.rc != 0
+        or ('---' ~ rpi_agh_adguard_container_name ~ '.service---') not in __rpi_agh_quadlet_dryrun.stdout
+      check_mode: false
+
+    - name: AdGuard Home | reload the user manager
+      ansible.builtin.systemd_service:
+        daemon_reload: true
+        scope: user
+      when: >-
+        __rpi_agh_quadlet is changed
+        or __rpi_agh_prune_unit is changed
+        or __rpi_agh_prune_dropin is changed
+
+    - name: AdGuard Home | start (restart when its files changed)
+      ansible.builtin.systemd_service:
+        name: "{{ rpi_agh_adguard_container_name }}.service"
+        scope: user
+        state: >-
+          {{ 'restarted'
+             if (__rpi_agh_quadlet is changed or __rpi_agh_cert is changed
+                 or __rpi_agh_key is changed or __rpi_agh_config is changed)
+             else 'started' }}
+
+    - name: AdGuard Home | enable podman-auto-update.timer
+      ansible.builtin.systemd_service:
+        name: podman-auto-update.timer
+        scope: user
+        enabled: true
+        state: started

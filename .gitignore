@@ -1,0 +1,10 @@
+# Python / Ansible tooling
+.venv/
+collections/
+*.retry
+__pycache__/
+
+# Real inventory and secrets stay out of git (see docs/secrets.md)
+inventory/
+.vault-pass
+*.vault-pass

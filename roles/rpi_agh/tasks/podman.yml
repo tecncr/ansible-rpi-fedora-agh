@@ -1,0 +1,61 @@
+---
+# The original procedure ran `podman system reset -f` twice to initialise
+# storage. That wipes every image and container, so it is not idempotent;
+# `podman info` initialises storage just the same, and `podman system migrate`
+# (handler) picks up changed /etc/subuid and /etc/subgid ranges.
+
+- name: Podman | initialise root storage
+  ansible.builtin.command: podman info --format json
+  changed_when: false
+  check_mode: false
+
+# podman.service is socket activated and exits after 5 s of inactivity, so it
+# is only enabled; requiring "started" would report a change on every run.
+- name: Podman | enable the root podman socket and service
+  ansible.builtin.systemd_service:
+    name: "{{ item.name }}"
+    enabled: true
+    state: "{{ item.state | default(omit) }}"
+  loop:
+    - { name: podman.socket, state: started }
+    - { name: podman.service }
+  loop_control:
+    label: "{{ item.name }}"
+
+- name: Podman | enable lingering for {{ rpi_agh_services_user }}
+  ansible.builtin.command: loginctl enable-linger {{ rpi_agh_services_user }}
+  args:
+    creates: /var/lib/systemd/linger/{{ rpi_agh_services_user }}
+
+- name: Podman | wait for the user manager of {{ rpi_agh_services_user }}
+  ansible.builtin.wait_for:
+    path: "{{ rpi_agh_services_runtime_dir }}/bus"
+    timeout: 60
+
+- name: Podman | initialise rootless storage of {{ rpi_agh_services_user }}
+  ansible.builtin.command: podman info --format json
+  become: true
+  become_user: "{{ rpi_agh_services_user }}"
+  environment:
+    XDG_RUNTIME_DIR: "{{ rpi_agh_services_runtime_dir }}"
+  changed_when: false
+  check_mode: false
+
+- name: Podman | apply pending subuid/subgid migrations
+  ansible.builtin.meta: flush_handlers
+
+- name: Podman | enable the rootless podman socket and service of {{ rpi_agh_services_user }}
+  ansible.builtin.systemd_service:
+    name: "{{ item.name }}"
+    enabled: true
+    state: "{{ item.state | default(omit) }}"
+    scope: user
+  loop:
+    - { name: podman.socket, state: started }
+    - { name: podman.service }
+  loop_control:
+    label: "{{ item.name }}"
+  become: true
+  become_user: "{{ rpi_agh_services_user }}"
+  environment:
+    XDG_RUNTIME_DIR: "{{ rpi_agh_services_runtime_dir }}"

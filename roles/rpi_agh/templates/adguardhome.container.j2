@@ -1,0 +1,29 @@
+{{ ansible_managed | comment }}
+[Unit]
+Description=The {{ rpi_agh_adguard_container_name }} container
+StartLimitIntervalSec=500
+StartLimitBurst=5
+
+[Service]
+Restart=on-failure
+RestartSec=5s
+
+[Container]
+AutoUpdate=registry
+ContainerName={{ rpi_agh_adguard_container_name }}
+Environment=TZ={{ rpi_agh_adguard_timezone }}
+Environment=HOSTNAME={{ rpi_agh_adguard_container_name }}
+HostName={{ rpi_agh_adguard_container_name }}
+Image={{ rpi_agh_adguard_image }}
+{% for port in rpi_agh_adguard_published_ports %}
+PublishPort={{ port }}
+{% endfor %}
+Volume={{ rpi_agh_adguard_dir }}/work:/opt/adguardhome/work:Z
+Volume={{ rpi_agh_adguard_dir }}/conf:/opt/adguardhome/conf:Z
+Volume={{ rpi_agh_adguard_dir }}/certs:/opt/adguardhome/certs:Z
+Volume=/etc/localtime:/etc/localtime:ro
+Volume=/dev/urandom:/dev/urandom:ro
+Volume=/dev/urandom:/dev/random:ro
+
+[Install]
+WantedBy=multi-user.target default.target

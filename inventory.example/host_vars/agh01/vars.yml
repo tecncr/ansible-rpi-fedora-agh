@@ -1,0 +1,4 @@
+---
+rpi_agh_fqdn: agh01.lan.example.com
+# Defaults to rpi_agh_fqdn when omitted
+rpi_agh_adguard_fqdn: dns1.example.com

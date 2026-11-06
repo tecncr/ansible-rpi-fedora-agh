@@ -1,0 +1,38 @@
+---
+# Settings shared by every Pi. Secrets live in vault.yml (ansible-vault
+# encrypted) and in files/<host>/ (vault-encrypted files); this file only maps
+# them to the role variables. See docs/variables.md and docs/secrets.md.
+
+# ----------------------------------------------------------- connection
+rpi_agh_admin_user: tecncr
+ansible_user: "{{ rpi_agh_admin_user }}"
+ansible_become_password: "{{ vault_admin_become_password }}"
+
+# ----------------------------------------------------------- passwords (hashes)
+rpi_agh_root_password_hash: "{{ vault_root_password_hash }}"
+rpi_agh_admin_password_hash: "{{ vault_admin_password_hash }}"
+rpi_agh_services_password_hash: "{{ vault_services_password_hash }}"
+
+# ----------------------------------------------------------- SSH public keys
+rpi_agh_root_authorized_keys:
+  - ssh-ed25519 CHANGE_ME me@laptop
+rpi_agh_admin_authorized_keys:
+  - ssh-ed25519 CHANGE_ME me@laptop
+rpi_agh_services_authorized_keys:
+  - ssh-ed25519 CHANGE_ME me@laptop
+
+# ----------------------------------------------------------- per-host files
+# Certificates, keys and AdGuardHome.yaml are read from files/<inventory host>/.
+# Keys and AdGuardHome.yaml must be encrypted with `ansible-vault encrypt`;
+# the file lookup decrypts them transparently.
+rpi_agh_secret_files: "{{ inventory_dir }}/files/{{ inventory_hostname }}"
+rpi_agh_host_tls_cert: "{{ lookup('ansible.builtin.file', rpi_agh_secret_files ~ '/host.pem') }}"
+rpi_agh_host_tls_key: "{{ lookup('ansible.builtin.file', rpi_agh_secret_files ~ '/host.key') }}"
+rpi_agh_adguard_tls_cert: "{{ lookup('ansible.builtin.file', rpi_agh_secret_files ~ '/adguard.pem') }}"
+rpi_agh_adguard_tls_key: "{{ lookup('ansible.builtin.file', rpi_agh_secret_files ~ '/adguard.key') }}"
+rpi_agh_adguard_config: "{{ lookup('ansible.builtin.file', rpi_agh_secret_files ~ '/AdGuardHome.yaml', rstrip=false) }}"
+
+# ----------------------------------------------------------- optional overrides
+# rpi_agh_adguard_timezone: America/Lima
+# rpi_agh_dns_check_domain: tecncr.com
+# rpi_agh_serial: 1

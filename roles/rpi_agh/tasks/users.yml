@@ -1,0 +1,113 @@
+---
+- name: Users | admin group
+  ansible.builtin.group:
+    name: "{{ rpi_agh_admin_user }}"
+    gid: "{{ rpi_agh_admin_gid }}"
+
+- name: Users | admin user
+  ansible.builtin.user:
+    name: "{{ rpi_agh_admin_user }}"
+    uid: "{{ rpi_agh_admin_uid }}"
+    group: "{{ rpi_agh_admin_user }}"
+    groups: "{{ rpi_agh_admin_groups }}"
+    append: true
+    shell: /bin/bash
+    password: "{{ rpi_agh_admin_password_hash }}"
+    update_password: always
+
+- name: Users | root password
+  ansible.builtin.user:
+    name: root
+    password: "{{ rpi_agh_root_password_hash }}"
+    update_password: always
+
+# /services must be labelled like a home directory (semanage fcontext -e)
+- name: Users | list local SELinux file context equivalences
+  ansible.builtin.command: semanage fcontext -l -C
+  register: __rpi_agh_fcontext
+  changed_when: false
+  check_mode: false
+
+- name: Users | label the services home like /home/{{ rpi_agh_services_user }}
+  ansible.builtin.command: >-
+    semanage fcontext -a -e /home/{{ rpi_agh_services_user }} {{ rpi_agh_services_home }}
+  when: >-
+    (__rpi_agh_fcontext.stdout_lines | map('regex_replace', '\s+', ' ') | list)
+    is not contains(rpi_agh_services_home ~ ' = /home/' ~ rpi_agh_services_user)
+  register: __rpi_agh_fcontext_added
+  changed_when: true
+
+- name: Users | services group
+  ansible.builtin.group:
+    name: "{{ rpi_agh_services_group }}"
+    gid: "{{ rpi_agh_services_gid }}"
+
+- name: Users | services user
+  ansible.builtin.user:
+    name: "{{ rpi_agh_services_user }}"
+    uid: "{{ rpi_agh_services_uid }}"
+    group: "{{ rpi_agh_services_group }}"
+    comment: "{{ rpi_agh_services_comment }}"
+    home: "{{ rpi_agh_services_home }}"
+    create_home: true
+    shell: /bin/bash
+    password: "{{ rpi_agh_services_password_hash }}"
+    update_password: always
+  register: __rpi_agh_services_account
+
+# Only right after creating the home or adding the equivalence: AdGuard Home's
+# volumes below /services are relabelled by podman (:Z), and a recursive
+# restorecon on every run would fight those labels.
+- name: Users | relabel the services home
+  ansible.builtin.command: restorecon -Rv {{ rpi_agh_services_home }}
+  register: __rpi_agh_restorecon
+  changed_when: __rpi_agh_restorecon.stdout | length > 0
+  when: __rpi_agh_services_account is changed or __rpi_agh_fcontext_added is changed
+
+- name: Users | subordinate UID/GID ranges
+  ansible.builtin.template:
+    src: subid.j2
+    dest: "{{ item }}"
+    owner: root
+    group: root
+    mode: "0644"
+  loop:
+    - /etc/subuid
+    - /etc/subgid
+  notify:
+    - Migrate podman storage of the admin user
+    - Migrate podman storage of the services user
+
+- name: Users | ~/.ssh directories
+  ansible.builtin.file:
+    path: "{{ item.home }}/.ssh"
+    state: directory
+    owner: "{{ item.user }}"
+    group: "{{ item.group }}"
+    mode: "0700"
+  loop: &rpi_agh_ssh_users
+    - user: root
+      group: root
+      home: /root
+      keys: "{{ rpi_agh_root_authorized_keys }}"
+    - user: "{{ rpi_agh_admin_user }}"
+      group: "{{ rpi_agh_admin_user }}"
+      home: /home/{{ rpi_agh_admin_user }}
+      keys: "{{ rpi_agh_admin_authorized_keys }}"
+    - user: "{{ rpi_agh_services_user }}"
+      group: "{{ rpi_agh_services_group }}"
+      home: "{{ rpi_agh_services_home }}"
+      keys: "{{ rpi_agh_services_authorized_keys }}"
+  loop_control:
+    label: "{{ item.user }}"
+
+- name: Users | authorized_keys (exclusive)
+  ansible.builtin.copy:
+    dest: "{{ item.home }}/.ssh/authorized_keys"
+    content: "{{ item['keys'] | map('trim') | join('\n') }}\n"
+    owner: "{{ item.user }}"
+    group: "{{ item.group }}"
+    mode: "0600"
+  loop: *rpi_agh_ssh_users
+  loop_control:
+    label: "{{ item.user }}"

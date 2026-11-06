@@ -1,0 +1,21 @@
+{{ ansible_managed | comment }}
+[Unit]
+Description=Initialize DS3231 RTC and set system clock
+DefaultDependencies=no
+Before=basic.target
+After=sysinit.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+# Instantiate the device; the '-' prefix means don't fail if already registered
+ExecStartPre=-/usr/bin/bash -c 'echo ds3231 {{ rpi_agh_rtc_i2c_address }} > /sys/bus/i2c/devices/i2c-{{ rpi_agh_rtc_i2c_bus }}/new_device'
+# Give the rtc-ds1307 driver a moment to probe
+ExecStartPre=/usr/bin/sleep 0.3
+# Set system clock from RTC
+ExecStart=/usr/sbin/hwclock --hctosys --utc
+# On shutdown, write system time back to RTC so the next boot is accurate
+ExecStop=/usr/sbin/hwclock --systohc --utc
+
+[Install]
+WantedBy=basic.target

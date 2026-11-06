@@ -1,0 +1,67 @@
+---
+# Optional first step for an image that only allows root to log in (for
+# example flashed with `arm-image-installer --addkey ...`). Creates the admin
+# user with UID/GID 1000, its password and SSH keys, and lets it use sudo, so
+# site.yml can connect as that user. Safe to re-run.
+#
+#   ansible-playbook bootstrap.yml --limit agh01
+
+- name: Bootstrap the admin user as root
+  hosts: rpi_adguard
+  gather_facts: false
+  vars:
+    ansible_user: root
+    ansible_become: false
+
+  tasks:
+    - name: Bootstrap | required values are present
+      ansible.builtin.assert:
+        that:
+          - rpi_agh_admin_user is defined and rpi_agh_admin_user | length > 0
+          - rpi_agh_admin_password_hash is defined and rpi_agh_admin_password_hash is match('^\$(y|gy|7|2[abxy]|6|5)\$')
+          - rpi_agh_admin_authorized_keys is defined and rpi_agh_admin_authorized_keys | length > 0
+        fail_msg: rpi_agh_admin_user, rpi_agh_admin_password_hash and rpi_agh_admin_authorized_keys are required
+        quiet: true
+
+    - name: Bootstrap | admin group
+      ansible.builtin.group:
+        name: "{{ rpi_agh_admin_user }}"
+        gid: "{{ rpi_agh_admin_gid | default(1000) }}"
+
+    - name: Bootstrap | admin user
+      ansible.builtin.user:
+        name: "{{ rpi_agh_admin_user }}"
+        uid: "{{ rpi_agh_admin_uid | default(1000) }}"
+        group: "{{ rpi_agh_admin_user }}"
+        groups: [wheel]
+        append: true
+        shell: /bin/bash
+        password: "{{ rpi_agh_admin_password_hash }}"
+        update_password: always
+
+    - name: Bootstrap | admin ~/.ssh
+      ansible.builtin.file:
+        path: /home/{{ rpi_agh_admin_user }}/.ssh
+        state: directory
+        owner: "{{ rpi_agh_admin_user }}"
+        group: "{{ rpi_agh_admin_user }}"
+        mode: "0700"
+
+    - name: Bootstrap | admin authorized_keys
+      ansible.builtin.copy:
+        dest: /home/{{ rpi_agh_admin_user }}/.ssh/authorized_keys
+        content: "{{ rpi_agh_admin_authorized_keys | map('trim') | join('\n') }}\n"
+        owner: "{{ rpi_agh_admin_user }}"
+        group: "{{ rpi_agh_admin_user }}"
+        mode: "0600"
+
+- name: Check that the admin user can log in and sudo
+  hosts: rpi_adguard
+  gather_facts: false
+  tasks:
+    - name: Bootstrap | sudo works for the admin user
+      ansible.builtin.command: id -un
+      become: true
+      register: __rpi_agh_whoami
+      changed_when: false
+      failed_when: __rpi_agh_whoami.stdout != 'root'

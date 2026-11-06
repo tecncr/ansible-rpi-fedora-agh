@@ -1,0 +1,4 @@
+{{ ansible_managed | comment }}
+[commands]
+apply_updates={{ rpi_agh_dnf_automatic_apply_updates | ternary('True', 'False') }}
+reboot={{ rpi_agh_dnf_automatic_reboot }}

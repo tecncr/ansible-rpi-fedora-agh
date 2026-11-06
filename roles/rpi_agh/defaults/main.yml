@@ -1,0 +1,135 @@
+---
+# =============================================================================
+# rpi_agh role defaults
+#
+# Variables WITHOUT a default here are REQUIRED and must be provided through the
+# inventory (normally host_vars/<host>/vars.yml + an ansible-vault encrypted
+# vault.yml). The role refuses to run when any of them is missing or empty.
+# See roles/rpi_agh/README.md and docs/variables.md for the full list.
+#
+# Required (no defaults):
+#   rpi_agh_fqdn                       hostname.domain.tld of the Pi
+#   rpi_agh_admin_user                 main admin user (UID/GID 1000)
+#   rpi_agh_root_password_hash         crypt(3) hash ($y$ / $6$ ...)
+#   rpi_agh_admin_password_hash        crypt(3) hash
+#   rpi_agh_services_password_hash     crypt(3) hash
+#   rpi_agh_root_authorized_keys       list of SSH public keys
+#   rpi_agh_admin_authorized_keys      list of SSH public keys
+#   rpi_agh_services_authorized_keys   list of SSH public keys
+#   rpi_agh_host_tls_cert              PEM certificate (chain) for rpi_agh_fqdn
+#   rpi_agh_host_tls_key               PEM private key for rpi_agh_fqdn
+#   rpi_agh_adguard_tls_cert           PEM certificate (chain) for rpi_agh_adguard_fqdn
+#   rpi_agh_adguard_tls_key            PEM private key for rpi_agh_adguard_fqdn
+#   rpi_agh_adguard_config             full AdGuardHome.yaml content (string)
+# =============================================================================
+
+# FQDN AdGuard Home answers on (DoH/DoT/DoQ certificate name). Same as the host
+# FQDN unless set.
+rpi_agh_adguard_fqdn: "{{ rpi_agh_fqdn }}"
+
+# ---------------------------------------------------------------- base system
+rpi_agh_packages:
+  - fastfetch
+  - zram-generator
+  - dnf5-plugin-automatic
+  - i2c-tools
+  - python3-i2c-tools
+  - pcp
+  - python3-pcp
+  - podman
+  - cockpit
+  - cockpit-podman
+  - bind-utils                     # dig, used for the AdGuard Home health check
+  - policycoreutils-python-utils   # semanage
+  - openssl
+  - firewalld
+
+rpi_agh_unprivileged_port_start: 23
+
+rpi_agh_zram_size: ram
+rpi_agh_zram_compression_algorithm: zstd
+
+rpi_agh_firmware_config: /boot/efi/config.txt
+rpi_agh_firmware_config_lines:
+  - dtparam=i2c_arm=on
+  - dtoverlay=i2c-rtc,ds3231
+
+# Remove BLS entries / rescue images / initramfs of foreign machine IDs
+rpi_agh_boot_cleanup: true
+
+# Reboot automatically when phase 1 changed something that needs it
+rpi_agh_reboot_timeout: 900
+
+# ---------------------------------------------------------------- networking
+# Interface whose active NetworkManager profile gets renamed. Empty = autodetect
+# the only ethernet device (end0 on a Pi 4, eth0/enx... on a Pi 3).
+rpi_agh_ethernet_interface: ""
+rpi_agh_ethernet_connection_id: Ethernet
+
+# Resolver used while AdGuard Home is not up yet (systemd-resolved is masked)
+rpi_agh_bootstrap_nameserver: 9.9.9.9
+# Also ignore DNS servers learnt from DHCPv6/RA so only 127.0.0.1 is used
+rpi_agh_ignore_ipv6_auto_dns: true
+
+# firewalld services of the default zone, applied right after sshd hardening
+# (permanent + runtime). firewalld is enabled and started.
+rpi_agh_firewalld_services_removed:
+  - dhcpv6-client
+rpi_agh_firewalld_services_added:
+  - dns
+  - https
+  - http3
+  - dns-over-tls
+  - dns-over-quic
+
+# ---------------------------------------------------------------- updates
+rpi_agh_dnf_automatic_timer: dnf-automatic.timer
+rpi_agh_dnf_automatic_apply_updates: true
+rpi_agh_dnf_automatic_reboot: when-needed
+
+# ---------------------------------------------------------------- RTC (DS3231)
+rpi_agh_rtc_i2c_bus: 1
+rpi_agh_rtc_i2c_address: "0x68"
+# Rewrite the RTC from the (NTP synchronised) system clock when they drift apart
+rpi_agh_rtc_max_drift_seconds: 2
+rpi_agh_ntp_sync_timeout: 300
+
+# ---------------------------------------------------------------- users
+rpi_agh_admin_uid: 1000
+rpi_agh_admin_gid: 1000
+rpi_agh_admin_groups:
+  - wheel
+
+rpi_agh_services_user: services
+rpi_agh_services_group: services
+rpi_agh_services_uid: 2000
+rpi_agh_services_gid: 2000
+rpi_agh_services_home: /services
+rpi_agh_services_comment: Services
+
+rpi_agh_admin_subid_start: 100000
+rpi_agh_services_subid_start: 500000
+rpi_agh_subid_count: 65536
+
+# ---------------------------------------------------------------- AdGuard Home
+rpi_agh_adguard_image: docker.io/adguard/adguardhome:latest
+rpi_agh_adguard_container_name: adguardhome
+rpi_agh_adguard_timezone: America/Lima
+rpi_agh_adguard_dir: "{{ rpi_agh_services_home }}/.local/containers/adguardhome"
+rpi_agh_adguard_published_ports:
+  - 53:53/udp
+  - 53:53/tcp
+  - 443:443/tcp
+  - 443:443/udp
+  - 853:853/tcp
+  - 853:853/udp
+
+# AdGuard Home rewrites AdGuardHome.yaml at runtime (schema migrations, settings
+# changed in the web UI...). By default the file is only seeded when it does
+# not exist yet; set to true to enforce the inventory copy on every run.
+rpi_agh_adguard_config_force: false
+
+# Health check: dig @127.0.0.1 <domain> until NOERROR
+rpi_agh_dns_check_domain: tecncr.com
+rpi_agh_dns_check_timeout: 300
+rpi_agh_dns_check_interval: 5

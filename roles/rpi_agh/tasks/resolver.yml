@@ -1,0 +1,52 @@
+---
+# systemd-resolved owns port 53 on Fedora, so it is masked and NetworkManager
+# writes a plain /etc/resolv.conf instead. Until AdGuard Home answers, the
+# ethernet profile uses the bootstrap resolver; dns_switch.yml moves it to
+# 127.0.0.1 afterwards. Re-runs on a finished host leave 127.0.0.1 alone.
+
+- name: Resolver | let NetworkManager write /etc/resolv.conf itself
+  ansible.builtin.copy:
+    dest: /etc/NetworkManager/conf.d/90-rpi-adguardhome-dns.conf
+    content: |
+      # Managed by Ansible (rpi_agh): systemd-resolved is masked
+      [main]
+      dns=default
+      rc-manager=file
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Reload NetworkManager
+
+- name: Resolver | stop and mask systemd-resolved
+  ansible.builtin.systemd_service:
+    name: systemd-resolved.service
+    state: stopped
+    masked: true
+
+- name: Resolver | inspect /etc/resolv.conf
+  ansible.builtin.stat:
+    path: /etc/resolv.conf
+    follow: false
+  register: __rpi_agh_resolv_stat
+
+# A symlink into /run/systemd/resolve would dangle after a reboot
+- name: Resolver | replace the systemd-resolved symlink with a regular file
+  ansible.builtin.copy:
+    dest: /etc/resolv.conf
+    content: "nameserver {{ rpi_agh_bootstrap_nameserver }}\n"
+    owner: root
+    group: root
+    mode: "0644"
+    follow: false
+  when: __rpi_agh_resolv_stat.stat.islnk | default(false) or not __rpi_agh_resolv_stat.stat.exists
+
+- name: Resolver | reload NetworkManager configuration
+  ansible.builtin.meta: flush_handlers
+
+- name: Resolver | use the bootstrap nameserver until AdGuard Home is up
+  ansible.builtin.include_tasks: nm_dns.yml
+  vars:
+    __rpi_agh_target_dns: "{{ rpi_agh_bootstrap_nameserver }}"
+    __rpi_agh_accept_dns:
+      - "{{ rpi_agh_bootstrap_nameserver }}"
+      - 127.0.0.1

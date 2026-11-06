@@ -1,0 +1,235 @@
+---
+# Everything here is read-only. Type/presence checks are done by
+# meta/argument_specs.yml before this file runs; these tasks add emptiness,
+# format and semantic checks (certificate names, key pairs, YAML syntax...).
+
+- name: Validate | required strings are not empty
+  ansible.builtin.assert:
+    that:
+      - lookup('ansible.builtin.vars', item) is string
+      - lookup('ansible.builtin.vars', item) | trim | length > 0
+    fail_msg: "{{ item }} is required and must be a non-empty string"
+    quiet: true
+  loop:
+    - rpi_agh_fqdn
+    - rpi_agh_adguard_fqdn
+    - rpi_agh_admin_user
+    - rpi_agh_root_password_hash
+    - rpi_agh_admin_password_hash
+    - rpi_agh_services_password_hash
+    - rpi_agh_host_tls_cert
+    - rpi_agh_host_tls_key
+    - rpi_agh_adguard_tls_cert
+    - rpi_agh_adguard_tls_key
+    - rpi_agh_adguard_config
+  no_log: true   # values may be secrets; the loop label still names the variable
+  loop_control:
+    label: "{{ item }}"
+
+- name: Validate | FQDNs are well formed
+  ansible.builtin.assert:
+    that:
+      - item.value is match('^(?=.{1,253}$)([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z][a-z0-9-]{0,61}[a-z0-9]$')
+    fail_msg: "{{ item.name }}={{ item.value }} is not a lowercase hostname.domain.tld FQDN"
+    quiet: true
+  loop:
+    - { name: rpi_agh_fqdn, value: "{{ rpi_agh_fqdn }}" }
+    - { name: rpi_agh_adguard_fqdn, value: "{{ rpi_agh_adguard_fqdn }}" }
+  loop_control:
+    label: "{{ item.name }}"
+
+- name: Validate | user names are valid
+  ansible.builtin.assert:
+    that:
+      - item is match('^[a-z_][a-z0-9_-]{0,31}$')
+      - item != 'root'
+      - rpi_agh_admin_user != rpi_agh_services_user
+    fail_msg: "invalid or conflicting user name {{ item }}"
+    quiet: true
+  loop:
+    - "{{ rpi_agh_admin_user }}"
+    - "{{ rpi_agh_services_user }}"
+
+- name: Validate | password hashes look like crypt(3) hashes
+  ansible.builtin.assert:
+    that:
+      - lookup('ansible.builtin.vars', item) is match('^\$(y|gy|7|2[abxy]|6|5)\$[^\s:]+$')
+    fail_msg: >-
+      {{ item }} must be a crypt(3) hash (e.g. from `mkpasswd -m yescrypt` or
+      `openssl passwd -6`), not a plaintext password
+    quiet: true
+  loop:
+    - rpi_agh_root_password_hash
+    - rpi_agh_admin_password_hash
+    - rpi_agh_services_password_hash
+  no_log: true
+  loop_control:
+    label: "{{ item }}"
+
+- name: Validate | SSH public key lists are non-empty and well formed
+  ansible.builtin.assert:
+    that:
+      - lookup('ansible.builtin.vars', item) | length > 0
+      - >-
+        lookup('ansible.builtin.vars', item)
+        | reject('match', __rpi_agh_ssh_key_regex)
+        | list | length == 0
+    fail_msg: "{{ item }} must be a non-empty list of OpenSSH public keys (one key per item)"
+    quiet: true
+  loop:
+    - rpi_agh_root_authorized_keys
+    - rpi_agh_admin_authorized_keys
+    - rpi_agh_services_authorized_keys
+
+- name: Validate | PEM blocks have the expected shape
+  ansible.builtin.assert:
+    that:
+      - lookup('ansible.builtin.vars', item.var) | trim is match(item.regex)
+    fail_msg: "{{ item.var }} does not look like a PEM {{ item.kind }}"
+    quiet: true
+  loop:
+    - { var: rpi_agh_host_tls_cert, kind: certificate, regex: '^-----BEGIN CERTIFICATE-----' }
+    - { var: rpi_agh_adguard_tls_cert, kind: certificate, regex: '^-----BEGIN CERTIFICATE-----' }
+    - { var: rpi_agh_host_tls_key, kind: private key, regex: '^-----BEGIN ([A-Z]+ )?PRIVATE KEY-----' }
+    - { var: rpi_agh_adguard_tls_key, kind: private key, regex: '^-----BEGIN ([A-Z]+ )?PRIVATE KEY-----' }
+  no_log: true
+  loop_control:
+    label: "{{ item.var }}"
+
+- name: Validate | inspect certificates
+  community.crypto.x509_certificate_info:
+    content: "{{ item.cert }}"
+    valid_at:
+      soon: "+14d"
+  delegate_to: localhost
+  become: false
+  register: __rpi_agh_cert_info
+  no_log: true
+  loop:
+    - { name: host, fqdn: "{{ rpi_agh_fqdn }}", cert: "{{ rpi_agh_host_tls_cert }}" }
+    - { name: adguard, fqdn: "{{ rpi_agh_adguard_fqdn }}", cert: "{{ rpi_agh_adguard_tls_cert }}" }
+  loop_control:
+    label: "{{ item.name }} ({{ item.fqdn }})"
+
+- name: Validate | inspect private keys
+  community.crypto.openssl_privatekey_info:
+    content: "{{ item }}"
+  delegate_to: localhost
+  become: false
+  register: __rpi_agh_key_info
+  no_log: true
+  loop:
+    - "{{ rpi_agh_host_tls_key }}"
+    - "{{ rpi_agh_adguard_tls_key }}"
+
+- name: Validate | summarise certificate checks
+  ansible.builtin.set_fact:
+    __rpi_agh_tls_checks: "{{ __rpi_agh_tls_checks | default([]) + [__check] }}"
+  vars:
+    __info: "{{ item.0 }}"
+    __fqdn: "{{ item.0.item.fqdn }}"
+    __sans: "{{ item.0.subject_alt_name | default([], true) | map('lower') | list }}"
+    __check:
+      name: "{{ item.0.item.name }}"
+      fqdn: "{{ __fqdn }}"
+      not_after: "{{ __info.not_after }}"
+      expired: "{{ __info.expired }}"
+      sans: "{{ __sans }}"
+      name_ok: "{{ ('dns:' ~ __fqdn) in __sans or ('dns:*.' ~ __fqdn.split('.', 1)[1]) in __sans }}"
+      key_ok: "{{ item.1.public_key == __info.public_key }}"
+  loop: "{{ __rpi_agh_cert_info.results | zip(__rpi_agh_key_info.results) | list }}"
+  loop_control:
+    label: "{{ item.0.item.name }}"
+  no_log: true
+
+- name: Validate | certificates are current, match their FQDN and their key
+  ansible.builtin.assert:
+    that:
+      - not (item.expired | bool)
+      - item.name_ok | bool
+      - item.key_ok | bool
+    fail_msg: >-
+      {{ item.name }} certificate is not usable: expired={{ item.expired }},
+      SANs={{ item.sans | join(', ') }} (need {{ item.fqdn }}), key matches={{ item.key_ok }}
+    success_msg: "{{ item.name }} certificate OK for {{ item.fqdn }} until {{ item.not_after }}"
+  loop: "{{ __rpi_agh_tls_checks }}"
+  loop_control:
+    label: "{{ item.name }}"
+
+- name: Validate | warn about certificates expiring within 14 days
+  ansible.builtin.debug:
+    msg: "WARNING: {{ item.item.name }} certificate expires on {{ item.not_after }}"
+  when: not item.valid_at.soon
+  loop: "{{ __rpi_agh_cert_info.results }}"
+  loop_control:
+    label: "{{ item.item.name }}"
+
+- name: Validate | AdGuardHome.yaml parses as a YAML mapping
+  ansible.builtin.assert:
+    that:
+      - (rpi_agh_adguard_config | from_yaml) is mapping
+    fail_msg: rpi_agh_adguard_config is not a valid YAML mapping
+    quiet: true
+  no_log: true
+
+- name: Validate | warn when AdGuardHome.yaml does not point at the deployed certificate
+  vars:
+    __tls: "{{ (rpi_agh_adguard_config | from_yaml).tls | default({}) }}"
+  ansible.builtin.debug:
+    msg: >-
+      WARNING: AdGuardHome.yaml tls section expects certificate_path={{ __tls.certificate_path | default('(unset)') }}
+      and private_key_path={{ __tls.private_key_path | default('(unset)') }}, but the role deploys
+      /opt/adguardhome/certs/{{ rpi_agh_adguard_fqdn }}.pem and /opt/adguardhome/certs/{{ rpi_agh_adguard_fqdn }}.key
+  when: >-
+    __tls.certificate_path | default('') != '/opt/adguardhome/certs/' ~ rpi_agh_adguard_fqdn ~ '.pem'
+    or __tls.private_key_path | default('') != '/opt/adguardhome/certs/' ~ rpi_agh_adguard_fqdn ~ '.key'
+
+# ------------------------------------------------------------------ target
+- name: Validate | target is Fedora on aarch64
+  ansible.builtin.assert:
+    that:
+      - ansible_facts['distribution'] == 'Fedora'
+      - ansible_facts['architecture'] == 'aarch64'
+    fail_msg: >-
+      Unsupported target {{ ansible_facts['distribution'] }} {{ ansible_facts['distribution_version'] }}
+      {{ ansible_facts['architecture'] }}; this role targets Fedora Server aarch64 on Raspberry Pi
+    quiet: true
+
+- name: Validate | read device tree model
+  ansible.builtin.slurp:
+    src: /proc/device-tree/model
+  register: __rpi_agh_model
+
+- name: Validate | target is a Raspberry Pi
+  ansible.builtin.assert:
+    that:
+      - "'Raspberry Pi' in (__rpi_agh_model.content | b64decode)"
+    fail_msg: "Not a Raspberry Pi: {{ __rpi_agh_model.content | b64decode }}"
+    success_msg: "{{ __rpi_agh_model.content | b64decode | regex_replace('[^ -~]', '') }}"
+
+- name: Validate | look up users by UID
+  ansible.builtin.getent:
+    database: passwd
+  register: __rpi_agh_passwd
+
+- name: Validate | admin/services UIDs are free or already belong to the expected users
+  vars:
+    __owners: >-
+      {{ __rpi_agh_passwd.ansible_facts.getent_passwd | dict2items
+         | selectattr('value.1', 'equalto', item.uid | string)
+         | map(attribute='key') | list }}
+  ansible.builtin.assert:
+    that:
+      - __owners | length == 0 or __owners == [item.name]
+    fail_msg: "UID {{ item.uid }} already belongs to {{ __owners | join(', ') }}, expected {{ item.name }}"
+    quiet: true
+  loop:
+    - { uid: "{{ rpi_agh_admin_uid }}", name: "{{ rpi_agh_admin_user }}" }
+    - { uid: "{{ rpi_agh_services_uid }}", name: "{{ rpi_agh_services_user }}" }
+
+- name: Validate | derive names and paths
+  ansible.builtin.set_fact:
+    rpi_agh_hostname: "{{ rpi_agh_fqdn.split('.')[0] }}"
+    rpi_agh_host_cert_path: /etc/pki/tls/certs/{{ rpi_agh_fqdn }}.pem
+    rpi_agh_host_key_path: /etc/pki/tls/private/{{ rpi_agh_fqdn }}.pem
+    rpi_agh_services_runtime_dir: /run/user/{{ rpi_agh_services_uid }}

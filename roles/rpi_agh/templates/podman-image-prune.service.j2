@@ -1,0 +1,8 @@
+{{ ansible_managed | comment }}
+[Unit]
+Description=Remove unused podman images after podman-auto-update
+Documentation=man:podman-image-prune(1)
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/podman image prune --all --force

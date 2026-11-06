@@ -1,0 +1,28 @@
+---
+# All packages are installed up front, while the stock resolver still works
+# (systemd-resolved is masked later on).
+
+- name: Packages | check python3-libdnf5 (needed by the dnf5 module)
+  ansible.builtin.command: rpm -q python3-libdnf5  # noqa: command-instead-of-module
+  register: __rpi_agh_libdnf5
+  changed_when: false
+  failed_when: false
+  check_mode: false
+
+- name: Packages | install python3-libdnf5
+  ansible.builtin.command: dnf install -y python3-libdnf5
+  when: __rpi_agh_libdnf5.rc != 0
+  changed_when: true
+
+- name: Packages | upgrade the whole system (dnf update -y --refresh)
+  ansible.builtin.dnf5:
+    name: "*"
+    state: latest
+    update_cache: true
+  register: __rpi_agh_upgrade
+  notify: Reboot required
+
+- name: Packages | install required packages
+  ansible.builtin.dnf5:
+    name: "{{ rpi_agh_packages }}"
+    state: present

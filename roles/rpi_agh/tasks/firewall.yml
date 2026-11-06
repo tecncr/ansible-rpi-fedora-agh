@@ -1,0 +1,31 @@
+---
+# Runs right after sshd hardening. Equivalent to:
+#   firewall-cmd --remove-service=dhcpv6-client
+#   firewall-cmd --add-service={dns,https,http3,dns-over-tls,dns-over-quic}
+#   firewall-cmd --runtime-to-permanent && firewall-cmd --reload
+# but idempotent: every change is applied to both the permanent and the
+# runtime configuration (permanent + immediate), so no reload is needed and
+# unrelated runtime-only rules are not persisted by accident.
+# Services act on the default zone (FedoraServer on Fedora Server).
+
+- name: Firewall | enable and start firewalld
+  ansible.builtin.systemd_service:
+    name: firewalld.service
+    enabled: true
+    state: started
+
+- name: Firewall | remove services
+  ansible.posix.firewalld:
+    service: "{{ item }}"
+    state: disabled
+    permanent: true
+    immediate: true
+  loop: "{{ rpi_agh_firewalld_services_removed }}"
+
+- name: Firewall | add services
+  ansible.posix.firewalld:
+    service: "{{ item }}"
+    state: enabled
+    permanent: true
+    immediate: true
+  loop: "{{ rpi_agh_firewalld_services_added }}"
